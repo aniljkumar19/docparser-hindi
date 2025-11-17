@@ -35,7 +35,13 @@ from .connectors.zoho_books import ZohoBooksClient, map_parsed_to_zoho_invoice
 from .storage import save_file_to_s3, get_object_key, ensure_bucket
 
 # ...
-init_db()
+# Initialize database (with error handling)
+try:
+    init_db()
+except Exception as e:
+    import logging
+    logging.error(f"Database initialization failed: {e}")
+    # Don't crash on startup - let it fail on first request if needed
 ensure_bucket()  # <- create S3/MinIO bucket if missing (idempotent)
 
 

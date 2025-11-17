@@ -12,7 +12,14 @@ DB_URL = os.getenv("DATABASE_URL") or os.getenv("DB_URL", "sqlite:///./doc.db")
 
 # Schema name for DocParser tables (isolates from other apps in same database)
 # Set DOCPARSER_SCHEMA env var to change, defaults to 'docparser'
+# Note: SQLite doesn't support schemas, so schema is only used for PostgreSQL
 DOCPARSER_SCHEMA = os.getenv("DOCPARSER_SCHEMA", "docparser")
+
+# Only use schema for PostgreSQL (SQLite doesn't support schemas)
+USE_SCHEMA = DB_URL.startswith("postgresql") or DB_URL.startswith("postgres")
+
+# For SQLite, don't use schema (set to None)
+TABLE_SCHEMA = DOCPARSER_SCHEMA if USE_SCHEMA else None
 
 engine = create_engine(DB_URL, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
@@ -20,7 +27,7 @@ Base = declarative_base()
 
 class Job(Base):
     __tablename__ = "jobs"
-    __table_args__ = {'schema': DOCPARSER_SCHEMA}
+    __table_args__ = {'schema': TABLE_SCHEMA} if TABLE_SCHEMA else {}
     id = Column(String, primary_key=True, default=lambda: "job_" + uuid.uuid4().hex[:12])
     status = Column(String, default="queued")
     doc_type = Column(String, default="invoice")
@@ -38,7 +45,7 @@ class Job(Base):
 class Batch(Base):
     """Represents a batch of documents uploaded together"""
     __tablename__ = "batches"
-    __table_args__ = {'schema': DOCPARSER_SCHEMA}
+    __table_args__ = {'schema': TABLE_SCHEMA} if TABLE_SCHEMA else {}
     
     id = Column(String, primary_key=True, default=lambda: "batch_" + uuid.uuid4().hex[:12])
     tenant_id = Column(String, nullable=False)
@@ -54,7 +61,7 @@ class Batch(Base):
 class Client(Base):
     """CA's clients"""
     __tablename__ = "clients"
-    __table_args__ = {'schema': DOCPARSER_SCHEMA}
+    __table_args__ = {'schema': TABLE_SCHEMA} if TABLE_SCHEMA else {}
     
     id = Column(String, primary_key=True, default=lambda: "client_" + uuid.uuid4().hex[:12])
     tenant_id = Column(String, nullable=False)  # CA firm ID
@@ -67,14 +74,24 @@ class Client(Base):
 def init_db():
     """Initialize database: create schema if needed, then create tables."""
     # Only create schema for PostgreSQL (not SQLite)
-    if DB_URL.startswith("postgresql"):
-        with engine.connect() as conn:
-            # Create schema if it doesn't exist (idempotent)
-            conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {DOCPARSER_SCHEMA}"))
-            conn.commit()
+    if USE_SCHEMA:
+        try:
+            with engine.connect() as conn:
+                # Create schema if it doesn't exist (idempotent)
+                conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {DOCPARSER_SCHEMA}"))
+                conn.commit()
+        except Exception as e:
+            import logging
+            logging.warning(f"Could not create schema {DOCPARSER_SCHEMA}: {e}")
     
-    # Create all tables in the schema
-    Base.metadata.create_all(engine)
+    # Create all tables in the schema (or without schema for SQLite)
+    try:
+        Base.metadata.create_all(engine)
+    except Exception as e:
+        import logging
+        logging.error(f"Error creating tables: {e}")
+        logging.error(f"DB_URL: {DB_URL[:50]}...")  # Log first 50 chars (hide password)
+        raise
 
 def generate_job_id() -> str:
     return "job_" + secrets.token_hex(6)
