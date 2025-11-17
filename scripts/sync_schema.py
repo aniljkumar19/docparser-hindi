@@ -24,16 +24,16 @@ os.chdir(str(api_dir))
 
 from sqlalchemy import create_engine, inspect, text, MetaData
 from sqlalchemy.schema import CreateTable
-from app.db import Base, Job, Batch, Client
+from app.db import Base, Job, Batch, Client, DOCPARSER_SCHEMA
 
-def get_table_schema(engine, table_name):
+def get_table_schema(engine, table_name, schema_name):
     """Get the schema of a table as a dictionary."""
     inspector = inspect(engine)
-    if table_name not in inspector.get_table_names():
+    if table_name not in inspector.get_table_names(schema=schema_name):
         return None
     
     columns = {}
-    for col in inspector.get_columns(table_name):
+    for col in inspector.get_columns(table_name, schema=schema_name):
         columns[col['name']] = {
             'type': str(col['type']),
             'nullable': col['nullable'],
@@ -49,11 +49,15 @@ def compare_schemas(dev_url, prod_url):
     dev_engine = create_engine(dev_url)
     prod_engine = create_engine(prod_url)
     
+    schema_name = DOCPARSER_SCHEMA
+    print(f"📦 Comparing schema: {schema_name}\n")
+    
     dev_inspector = inspect(dev_engine)
     prod_inspector = inspect(prod_engine)
     
-    dev_tables = set(dev_inspector.get_table_names())
-    prod_tables = set(prod_inspector.get_table_names())
+    # Get tables in the docparser schema
+    dev_tables = set(dev_inspector.get_table_names(schema=schema_name))
+    prod_tables = set(prod_inspector.get_table_names(schema=schema_name))
     
     docparser_tables = {"jobs", "batches", "clients"}
     
@@ -83,8 +87,8 @@ def compare_schemas(dev_url, prod_url):
         differences = []
         
         for table_name in sorted(common_tables):
-            dev_schema = get_table_schema(dev_engine, table_name)
-            prod_schema = get_table_schema(prod_engine, table_name)
+            dev_schema = get_table_schema(dev_engine, table_name, schema_name)
+            prod_schema = get_table_schema(prod_engine, table_name, schema_name)
             
             if dev_schema != prod_schema:
                 print(f"\n   ⚠️  {table_name} - schema differs")

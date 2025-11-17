@@ -22,7 +22,7 @@ sys.path.insert(0, str(project_root))
 os.chdir(str(api_dir))
 
 from sqlalchemy import create_engine, inspect, text
-from app.db import Base, Job, Batch, Client
+from app.db import Base, Job, Batch, Client, DOCPARSER_SCHEMA
 
 def table_exists(engine, table_name):
     """Check if a table exists in the database."""
@@ -51,19 +51,44 @@ def apply_schema(database_url=None, dry_run=False):
     else:
         engine = create_engine(db_url)
     
+    # Check if schema exists
+    schema_name = DOCPARSER_SCHEMA
+    print(f"\n📦 Using schema: {schema_name}")
+    
+    if not dry_run:
+        with engine.connect() as conn:
+            # Check if schema exists
+            result = conn.execute(text("""
+                SELECT schema_name 
+                FROM information_schema.schemata 
+                WHERE schema_name = :schema
+            """), {"schema": schema_name})
+            schema_exists = result.fetchone() is not None
+            
+            if not schema_exists:
+                print(f"   ⚠️  Schema '{schema_name}' does not exist")
+                if not dry_run:
+                    print(f"   Creating schema '{schema_name}'...")
+                    conn.execute(text(f"CREATE SCHEMA {schema_name}"))
+                    conn.commit()
+                    print(f"   ✅ Schema '{schema_name}' created")
+            else:
+                print(f"   ✅ Schema '{schema_name}' exists")
+    
     tables_to_create = {
         "jobs": Job,
         "batches": Batch,
         "clients": Client,
     }
     
-    print(f"\n📋 Checking tables...")
+    print(f"\n📋 Checking tables in schema '{schema_name}'...")
     existing_tables = []
     missing_tables = []
     
     if not dry_run:
         inspector = inspect(engine)
-        existing = inspector.get_table_names()
+        # Get tables in the specific schema
+        existing = inspector.get_table_names(schema=schema_name)
     else:
         existing = []
     
@@ -99,9 +124,9 @@ def apply_schema(database_url=None, dry_run=False):
             sys.exit(1)
     
     print("\n✅ Schema applied successfully!")
-    print("\n📊 Current tables:")
+    print(f"\n📊 Current tables in schema '{schema_name}':")
     inspector = inspect(engine)
-    for table_name in sorted(inspector.get_table_names()):
+    for table_name in sorted(inspector.get_table_names(schema=schema_name)):
         if table_name in tables_to_create:
             print(f"   ✅ {table_name}")
 

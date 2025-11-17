@@ -4,10 +4,20 @@ This guide explains how to sync DocParser database schema from development to Ra
 
 ## Overview
 
-DocParser uses these tables:
+DocParser uses a **dedicated PostgreSQL schema** (`docparser`) to isolate its tables from other applications sharing the same database.
+
+**Tables in `docparser` schema:**
 - `jobs` - Document parsing jobs
 - `batches` - Batch uploads
 - `clients` - CA's clients
+
+**Why use a schema?**
+- ✅ Isolates DocParser tables from other apps (e.g., Competetracker)
+- ✅ No table name conflicts
+- ✅ Easy to manage and backup separately
+- ✅ Can set permissions per schema
+
+**Default schema name:** `docparser` (configurable via `DOCPARSER_SCHEMA` env var)
 
 ## Prerequisites
 

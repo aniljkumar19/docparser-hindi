@@ -22,12 +22,16 @@ os.chdir(str(api_dir))
 
 from sqlalchemy import create_engine
 from sqlalchemy.schema import CreateTable
-from app.db import Base, Job, Batch, Client
+from app.db import Base, Job, Batch, Client, DOCPARSER_SCHEMA
 
 def generate_schema(output_file=None):
     """Generate SQL DDL for all tables."""
     # Use a dummy database URL (we only need the schema, not a real connection)
     engine = create_engine("postgresql://dummy:dummy@localhost/dummy")
+    
+    # First, create the schema
+    schema_name = DOCPARSER_SCHEMA
+    schema_ddl = f"CREATE SCHEMA IF NOT EXISTS {schema_name};\n"
     
     tables = [Job, Batch, Client]
     ddl_statements = []
@@ -37,12 +41,15 @@ def generate_schema(output_file=None):
         create_stmt = CreateTable(table).compile(engine)
         ddl_statements.append(str(create_stmt))
     
-    sql = "\n\n".join(ddl_statements)
+    sql = schema_ddl + "\n\n" + "\n\n".join(ddl_statements)
     
     # Add header comment
-    header = """-- DocParser Database Schema
+    header = f"""-- DocParser Database Schema
 -- Generated from SQLAlchemy models
+-- Schema: {DOCPARSER_SCHEMA}
 -- Tables: jobs, batches, clients
+-- 
+-- This creates tables in the '{DOCPARSER_SCHEMA}' schema to isolate from other apps.
 -- 
 -- To apply this schema to Railway:
 --   1. Set DATABASE_URL environment variable to your Railway DB
@@ -50,6 +57,8 @@ def generate_schema(output_file=None):
 --
 -- Or manually:
 --   psql $DATABASE_URL < schema.sql
+--
+-- Note: The schema '{DOCPARSER_SCHEMA}' will be created automatically.
 """
     
     full_sql = header + "\n" + sql

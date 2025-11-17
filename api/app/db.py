@@ -9,12 +9,18 @@ import secrets
 
 # Railway provides DATABASE_URL automatically, but we also support DB_URL for flexibility
 DB_URL = os.getenv("DATABASE_URL") or os.getenv("DB_URL", "sqlite:///./doc.db")
+
+# Schema name for DocParser tables (isolates from other apps in same database)
+# Set DOCPARSER_SCHEMA env var to change, defaults to 'docparser'
+DOCPARSER_SCHEMA = os.getenv("DOCPARSER_SCHEMA", "docparser")
+
 engine = create_engine(DB_URL, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 Base = declarative_base()
 
 class Job(Base):
     __tablename__ = "jobs"
+    __table_args__ = {'schema': DOCPARSER_SCHEMA}
     id = Column(String, primary_key=True, default=lambda: "job_" + uuid.uuid4().hex[:12])
     status = Column(String, default="queued")
     doc_type = Column(String, default="invoice")
@@ -32,6 +38,7 @@ class Job(Base):
 class Batch(Base):
     """Represents a batch of documents uploaded together"""
     __tablename__ = "batches"
+    __table_args__ = {'schema': DOCPARSER_SCHEMA}
     
     id = Column(String, primary_key=True, default=lambda: "batch_" + uuid.uuid4().hex[:12])
     tenant_id = Column(String, nullable=False)
@@ -47,6 +54,7 @@ class Batch(Base):
 class Client(Base):
     """CA's clients"""
     __tablename__ = "clients"
+    __table_args__ = {'schema': DOCPARSER_SCHEMA}
     
     id = Column(String, primary_key=True, default=lambda: "client_" + uuid.uuid4().hex[:12])
     tenant_id = Column(String, nullable=False)  # CA firm ID
@@ -57,6 +65,15 @@ class Client(Base):
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
 def init_db():
+    """Initialize database: create schema if needed, then create tables."""
+    # Only create schema for PostgreSQL (not SQLite)
+    if DB_URL.startswith("postgresql"):
+        with engine.connect() as conn:
+            # Create schema if it doesn't exist (idempotent)
+            conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {DOCPARSER_SCHEMA}"))
+            conn.commit()
+    
+    # Create all tables in the schema
     Base.metadata.create_all(engine)
 
 def generate_job_id() -> str:
