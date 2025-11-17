@@ -7,7 +7,8 @@ import secrets
 
 
 
-DB_URL = os.getenv("DB_URL", "sqlite:///./doc.db")
+# Railway provides DATABASE_URL automatically, but we also support DB_URL for flexibility
+DB_URL = os.getenv("DATABASE_URL") or os.getenv("DB_URL", "sqlite:///./doc.db")
 engine = create_engine(DB_URL, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 Base = declarative_base()
