@@ -13,6 +13,7 @@ type Job = {
     doc_type_confidence?: number | null;
     reconciliations?: {
       purchase_vs_gstr3b_itc?: PurchaseVsGstr3bRecon;
+      sales_vs_gstr1?: SalesVsGstr1Recon;
     };
     [k: string]: any;
   } | null;
