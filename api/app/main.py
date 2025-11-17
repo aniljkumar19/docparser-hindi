@@ -12,7 +12,9 @@ reload_api_keys()
 
 from rq import Queue
 from redis import Redis
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from .security import verify_api_key
 from .storage import save_file_to_s3, get_object_key

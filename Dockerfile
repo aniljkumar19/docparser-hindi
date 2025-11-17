@@ -1,3 +1,15 @@
+FROM node:20-alpine AS dashboard-builder
+
+# Build the Next.js dashboard
+WORKDIR /app/dashboard
+COPY dashboard/package*.json ./
+RUN npm ci
+COPY dashboard/ ./
+# Set API base URL for production build
+ARG NEXT_PUBLIC_DOCPARSER_API_BASE
+ENV NEXT_PUBLIC_DOCPARSER_API_BASE=${NEXT_PUBLIC_DOCPARSER_API_BASE:-}
+RUN npm run build
+
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -18,6 +30,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the entire api directory
 COPY api/ /app/
+
+# Copy built dashboard static files from builder stage
+COPY --from=dashboard-builder /app/dashboard/out /app/dashboard/out
 
 # Railway provides PORT env var, default to 8000 if not set
 ENV PORT=8000
