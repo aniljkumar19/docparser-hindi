@@ -27,6 +27,9 @@ yarn-error.log*
 data.db
 doc.db
 
+# Generated schema files
+schema.sql
+
 # Environment variables
 .env
 .env.local
