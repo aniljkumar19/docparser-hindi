@@ -589,7 +589,7 @@ def root():
       </div>
     </body>
     </html>
-    """.replace("{year}", year)
+    """.replace("{year}", year).replace("{env_label}", env_label).replace("{dashboard_text}", dashboard_text)
     return HTMLResponse(content=html)
 
 
