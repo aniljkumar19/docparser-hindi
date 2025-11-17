@@ -108,10 +108,21 @@ export default function Dashboard() {
   const [loadingJob, setLoadingJob] = useState(false);
   const [salesReconTab, setSalesReconTab] = useState<"missing_gstr1" | "missing_sales" | "mismatches">("missing_gstr1");
 
+  // Helper to get API base URL (relative in production, absolute in dev)
+  function getApiBase(): string {
+    if (process.env.NEXT_PUBLIC_DOCPARSER_API_BASE) {
+      return process.env.NEXT_PUBLIC_DOCPARSER_API_BASE;
+    }
+    if (typeof window !== 'undefined') {
+      return window.location.origin; // Use same origin in production
+    }
+    return "http://localhost:8000"; // Fallback for SSR
+  }
+
   // Fetch recent jobs on mount
   async function fetchJobs() {
     try {
-      const apiBase = process.env.NEXT_PUBLIC_DOCPARSER_API_BASE || "http://localhost:8000";
+      const apiBase = getApiBase();
       const r = await fetch(`${apiBase}/v1/jobs?limit=10`, {
         headers: {
           "Authorization": `Bearer ${process.env.NEXT_PUBLIC_DOCPARSER_API_KEY || "dev_123"}`
@@ -133,7 +144,7 @@ export default function Dashboard() {
   async function loadJobById(jobId: string) {
     setLoadingJob(true);
     try {
-      const apiBase = process.env.NEXT_PUBLIC_DOCPARSER_API_BASE || "http://localhost:8000";
+      const apiBase = getApiBase();
       const r = await fetch(`${apiBase}/v1/jobs/${jobId}`, {
         headers: {
           "Authorization": `Bearer ${process.env.NEXT_PUBLIC_DOCPARSER_API_KEY || "dev_123"}`
@@ -196,7 +207,7 @@ export default function Dashboard() {
     }
     
     try {
-      const apiBase = process.env.NEXT_PUBLIC_DOCPARSER_API_BASE || "http://localhost:8000";
+      const apiBase = getApiBase();
       const r = await fetch(`${apiBase}/v1/parse`, {
         method: "POST",
         headers: { 
@@ -252,7 +263,7 @@ export default function Dashboard() {
     try {
       let tries = 0;
       while (tries++ < 30) {
-        const apiBase = process.env.NEXT_PUBLIC_DOCPARSER_API_BASE || "http://localhost:8000";
+        const apiBase = getApiBase();
         const r = await fetch(`${apiBase}/v1/jobs/${id}`, {
           headers: { "Authorization": `Bearer ${process.env.NEXT_PUBLIC_DOCPARSER_API_KEY || "dev_123"}` }
         });
@@ -285,7 +296,7 @@ export default function Dashboard() {
   async function downloadExport(kind: "json" | "sales-csv" | "purchase-csv" | "sales-zoho" | "tally-xml") {
     if (!selectedJob) return;
     
-    const apiBase = process.env.NEXT_PUBLIC_DOCPARSER_API_BASE || "http://localhost:8000";
+    const apiBase = getApiBase();
     let path = "";
     
     if (kind === "json") path = `/v1/export/json/${selectedJob.job_id}`;
