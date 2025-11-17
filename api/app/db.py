@@ -147,17 +147,26 @@ def get_metered_item_for_tenant(db, tenant_id: str) -> str | None:
 
 # Utility selectors
 def get_latest_job_by_doc_type(db, tenant_id: str, doc_type: str):
-    return (
-        db.query(Job)
-        .filter(
-            Job.tenant_id == tenant_id,
+    from sqlalchemy import or_
+    # For development: if tenant_id is provided, also search for empty tenant_id
+    # This helps when jobs were created with different tenant_ids
+    if tenant_id:
+        # Search for jobs matching tenant_id OR empty tenant_id (for development)
+        query = db.query(Job).filter(
+            or_(Job.tenant_id == tenant_id, Job.tenant_id == "", Job.tenant_id.is_(None)),
             Job.doc_type == doc_type,
             Job.status == "succeeded",
             Job.result.isnot(None),
         )
-        .order_by(Job.updated_at.desc())
-        .first()
-    )
+    else:
+        # If no tenant_id, only search for empty tenant_id
+        query = db.query(Job).filter(
+            or_(Job.tenant_id == "", Job.tenant_id.is_(None)),
+            Job.doc_type == doc_type,
+            Job.status == "succeeded",
+            Job.result.isnot(None),
+        )
+    return query.order_by(Job.updated_at.desc()).first()
 
 # Bulk processing functions
 def create_batch(db, *, tenant_id: str, client_id: str = None, batch_name: str = None, total_files: int):

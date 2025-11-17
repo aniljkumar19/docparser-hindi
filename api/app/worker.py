@@ -67,10 +67,12 @@ def _attach_sales_vs_gstr1_recon(
     dbs, tenant_id: str | None, doc_type: str, result, meta: dict
 ):
     if not isinstance(result, dict):
+        logger.debug(f"Sales vs GSTR-1 reconciliation skipped: result is not a dict (type: {type(result)})")
         return
 
     # Use tenant_id if available, otherwise use empty string to match all jobs (for development)
     search_tenant_id = tenant_id if tenant_id else ""
+    logger.info(f"Attempting sales vs GSTR-1 reconciliation for doc_type={doc_type}, tenant_id={search_tenant_id}")
 
     other_job = None
     if doc_type == "sales_register":
@@ -78,18 +80,25 @@ def _attach_sales_vs_gstr1_recon(
         sr_payload = result
         g1_payload = getattr(other_job, "result", None) if other_job else None
         if not other_job:
-            logger.debug(f"No GSTR-1 found for sales_register reconciliation (tenant_id={search_tenant_id})")
+            logger.warning(f"No GSTR-1 found for sales_register reconciliation (tenant_id={search_tenant_id}, doc_type={doc_type})")
+            # Try to find any GSTR-1 job regardless of tenant_id for debugging
+            all_gstr1 = dbs.query(Job).filter(Job.doc_type == "gstr1", Job.status == "succeeded", Job.result.isnot(None)).order_by(Job.updated_at.desc()).limit(5).all()
+            logger.info(f"Found {len(all_gstr1)} GSTR-1 jobs in database (any tenant_id): {[j.id for j in all_gstr1]}")
     elif doc_type == "gstr1":
         other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "sales_register")
         sr_payload = getattr(other_job, "result", None) if other_job else None
         g1_payload = result
         if not other_job:
-            logger.debug(f"No sales_register found for GSTR-1 reconciliation (tenant_id={search_tenant_id})")
+            logger.warning(f"No sales_register found for GSTR-1 reconciliation (tenant_id={search_tenant_id}, doc_type={doc_type})")
+            # Try to find any sales_register job regardless of tenant_id for debugging
+            all_sr = dbs.query(Job).filter(Job.doc_type == "sales_register", Job.status == "succeeded", Job.result.isnot(None)).order_by(Job.updated_at.desc()).limit(5).all()
+            logger.info(f"Found {len(all_sr)} sales_register jobs in database (any tenant_id): {[j.id for j in all_sr]}")
     else:
+        logger.debug(f"Sales vs GSTR-1 reconciliation skipped: doc_type={doc_type} is not sales_register or gstr1")
         return
 
     if not sr_payload or not g1_payload:
-        logger.debug(f"Missing payloads for sales vs GSTR-1 reconciliation: sr={bool(sr_payload)}, g1={bool(g1_payload)}")
+        logger.warning(f"Missing payloads for sales vs GSTR-1 reconciliation: sr={bool(sr_payload)}, g1={bool(g1_payload)}, other_job={other_job.id if other_job else None}")
         return
 
     try:
