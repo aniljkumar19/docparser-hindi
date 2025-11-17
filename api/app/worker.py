@@ -148,6 +148,39 @@ def parse_job_task(job_id: str):
                 meta.setdefault("requested_doc_type", requested_doc_type)
 
             final_doc_type = requested_doc_type or meta.get("detected_doc_type") or meta.get("doc_type_internal") or "invoice"
+            
+            # Fallback: if filename suggests GSTR-1 but detection failed, force re-check
+            fn_lower = fn.lower()
+            if not requested_doc_type and ("gstr1" in fn_lower or "gstr-1" in fn_lower or "gstr_1" in fn_lower):
+                if final_doc_type == "invoice" and isinstance(result, dict):
+                    # Try to detect GSTR form from result or re-parse as GSTR
+                    logger.warning(f"GSTR-1 filename detected but doc_type is {final_doc_type}. Attempting GSTR-1 normalization.")
+                    try:
+                        layout_text = extract_text_with_layout(data) or extract_text_safely(data, fn)[0]
+                        if normalize_gstr1:
+                            gstr1_result = normalize_gstr1(layout_text or "")
+                            if isinstance(gstr1_result, dict) and gstr1_result.get("doc_type") == "gstr1":
+                                result = gstr1_result
+                                meta["detected_doc_type"] = "gstr1"
+                                final_doc_type = "gstr1"
+                                logger.info(f"Successfully normalized as GSTR-1 from filename hint")
+                    except Exception as e:
+                        logger.warning(f"Failed to normalize as GSTR-1 from filename: {e}")
+            elif not requested_doc_type and "sales" in fn_lower and ("register" in fn_lower or "csv" in fn_lower):
+                if final_doc_type != "sales_register" and isinstance(result, dict):
+                    logger.warning(f"Sales register filename detected but doc_type is {final_doc_type}. Attempting sales_register normalization.")
+                    try:
+                        from .parsers.sales_register import normalize_sales_register
+                        if normalize_sales_register:
+                            cleaned_text = extract_text_safely(data, fn)[0]
+                            sr_result = normalize_sales_register(cleaned_text)
+                            if isinstance(sr_result, dict) and sr_result.get("doc_type") == "sales_register":
+                                result = sr_result
+                                meta["detected_doc_type"] = "sales_register"
+                                final_doc_type = "sales_register"
+                                logger.info(f"Successfully normalized as sales_register from filename hint")
+                    except Exception as e:
+                        logger.warning(f"Failed to normalize as sales_register from filename: {e}")
 
             job_status = "succeeded"
             quality = meta.get("invoice_quality") if isinstance(meta, dict) else None
