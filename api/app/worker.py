@@ -5,10 +5,9 @@ from .db import (
     get_metered_item_for_tenant,
     get_latest_job_by_doc_type,
     find_matching_job_by_gstin_and_period,
-    _normalize_gstin,
-    _extract_gstin_from_result,
-    _extract_period_from_result,
 )
+# Import helper functions for GSTIN and period extraction
+from .db import _normalize_gstin, _extract_gstin_from_result, _extract_period_from_result
 from .storage import get_file_from_s3
 from .parsers.invoice import parse_bytes_to_result
 from .billing.stripe_billing import record_usage
