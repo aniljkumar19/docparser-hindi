@@ -30,6 +30,11 @@ from .exporters.registers import (
     purchase_register_to_csv,
     sales_register_to_zoho_json,
 )
+from .exporters.reconciliation import (
+    export_missing_invoices_csv,
+    export_value_mismatches_csv,
+    export_itc_mismatch_summary_csv,
+)
 from .connectors.zoho_books import ZohoBooksClient, map_parsed_to_zoho_invoice
 
 from .storage import save_file_to_s3, get_object_key, ensure_bucket
@@ -1157,3 +1162,163 @@ def export_sales_register_zoho(job_id: str, authorization: str = Header(None)):
         return JSONResponse(
             content={"filename": f"zoho_invoices_{job_id}.json", "content": json_body}
         )
+
+
+@app.get("/v1/export/reconciliation/missing-invoices/{job_id}")
+def export_missing_invoices(
+    job_id: str,
+    type: str = "gstr1",  # "gstr1" or "sales_register"
+    authorization: str | None = Header(None),
+    x_api_key: str | None = Header(None, alias="x-api-key")
+):
+    """Export missing invoices CSV for reconciliation."""
+    verify_api_key(authorization, x_api_key)
+    with SessionLocal() as dbs:
+        job = get_job_by_id(dbs, job_id)
+        if not job or job.status != "succeeded" or not job.meta:
+            raise HTTPException(status_code=400, detail="Job not found or not completed")
+        
+        reconciliations = job.meta.get("reconciliations", {})
+        sales_recon = reconciliations.get("sales_vs_gstr1", {})
+        
+        if not sales_recon:
+            raise HTTPException(status_code=404, detail="No sales vs GSTR-1 reconciliation found")
+        
+        missing_invoices = []
+        filename_prefix = ""
+        
+        if type == "gstr1":
+            missing_invoices = sales_recon.get("missing_in_gstr1", [])
+            filename_prefix = "missing_in_gstr1"
+        elif type == "sales_register":
+            missing_invoices = sales_recon.get("missing_in_sales_register", [])
+            filename_prefix = "missing_in_sales_register"
+        else:
+            raise HTTPException(status_code=400, detail="Invalid type. Use 'gstr1' or 'sales_register'")
+        
+        if not missing_invoices:
+            raise HTTPException(status_code=404, detail=f"No missing invoices found for type: {type}")
+        
+        csv_data = export_missing_invoices_csv(missing_invoices, source=type)
+        return JSONResponse(
+            content={"filename": f"{filename_prefix}_{job_id}.csv", "content": csv_data}
+        )
+
+
+@app.get("/v1/export/reconciliation/value-mismatches/{job_id}")
+def export_value_mismatches(
+    job_id: str,
+    authorization: str | None = Header(None),
+    x_api_key: str | None = Header(None, alias="x-api-key")
+):
+    """Export value mismatches CSV for sales register vs GSTR-1 reconciliation."""
+    verify_api_key(authorization, x_api_key)
+    with SessionLocal() as dbs:
+        job = get_job_by_id(dbs, job_id)
+        if not job or job.status != "succeeded" or not job.meta:
+            raise HTTPException(status_code=400, detail="Job not found or not completed")
+        
+        reconciliations = job.meta.get("reconciliations", {})
+        sales_recon = reconciliations.get("sales_vs_gstr1", {})
+        
+        if not sales_recon:
+            raise HTTPException(status_code=404, detail="No sales vs GSTR-1 reconciliation found")
+        
+        value_mismatches = sales_recon.get("value_mismatches", [])
+        if not value_mismatches:
+            raise HTTPException(status_code=404, detail="No value mismatches found")
+        
+        csv_data = export_value_mismatches_csv(value_mismatches)
+        return JSONResponse(
+            content={"filename": f"value_mismatches_{job_id}.csv", "content": csv_data}
+        )
+
+
+@app.get("/v1/export/reconciliation/itc-summary/{job_id}")
+def export_itc_summary(
+    job_id: str,
+    authorization: str | None = Header(None),
+    x_api_key: str | None = Header(None, alias="x-api-key")
+):
+    """Export ITC mismatch summary CSV for purchase register vs GSTR-3B reconciliation."""
+    verify_api_key(authorization, x_api_key)
+    with SessionLocal() as dbs:
+        job = get_job_by_id(dbs, job_id)
+        if not job or job.status != "succeeded" or not job.meta:
+            raise HTTPException(status_code=400, detail="Job not found or not completed")
+        
+        reconciliations = job.meta.get("reconciliations", {})
+        itc_recon = reconciliations.get("purchase_vs_gstr3b_itc", {})
+        
+        if not itc_recon:
+            raise HTTPException(status_code=404, detail="No purchase vs GSTR-3B ITC reconciliation found")
+        
+        csv_data = export_itc_mismatch_summary_csv(itc_recon)
+        return JSONResponse(
+            content={"filename": f"itc_summary_{job_id}.csv", "content": csv_data}
+        )
+
+
+# Sample documents endpoints
+@app.get("/v1/samples")
+def list_sample_documents():
+    """List available sample documents for testing."""
+    samples_dir = Path("/app/samples") if Path("/app/samples").exists() else Path(__file__).parent.parent.parent / "samples"
+    
+    samples = []
+    sample_files = {
+        "GSTR1.pdf": {"name": "GSTR-1 Return", "type": "gstr1", "description": "Sample GSTR-1 return for testing reconciliation"},
+        "GSTR-3B.pdf": {"name": "GSTR-3B Return", "type": "gstr3b", "description": "Sample GSTR-3B return for ITC reconciliation"},
+        "sales_register.csv": {"name": "Sales Register", "type": "sales_register", "description": "Sample sales register CSV"},
+        "purchase_register_complex.csv": {"name": "Purchase Register", "type": "purchase_register", "description": "Sample purchase register CSV"},
+    }
+    
+    # Add a sample invoice if available
+    invoice_files = ["sample_invoice.txt", "GSTN.pdf"]
+    for inv_file in invoice_files:
+        if (samples_dir / inv_file).exists():
+            sample_files[inv_file] = {
+                "name": "Sample Invoice",
+                "type": "invoice",
+                "description": "Sample GST invoice for testing"
+            }
+            break
+    
+    for filename, info in sample_files.items():
+        file_path = samples_dir / filename
+        if file_path.exists():
+            samples.append({
+                "filename": filename,
+                "name": info["name"],
+                "type": info["type"],
+                "description": info["description"],
+                "size": file_path.stat().st_size if file_path.exists() else 0
+            })
+    
+    return {"samples": samples}
+
+
+@app.get("/v1/samples/{filename}")
+def download_sample_document(filename: str):
+    """Download a sample document for testing."""
+    # Security: only allow specific filenames
+    allowed_files = {
+        "GSTR1.pdf", "GSTR-3B.pdf", "sales_register.csv", 
+        "purchase_register_complex.csv", "purchase_register_dirty.csv",
+        "sample_invoice.txt", "GSTN.pdf"
+    }
+    
+    if filename not in allowed_files:
+        raise HTTPException(status_code=404, detail="Sample file not found")
+    
+    samples_dir = Path("/app/samples") if Path("/app/samples").exists() else Path(__file__).parent.parent.parent / "samples"
+    file_path = samples_dir / filename
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Sample file not found")
+    
+    return FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type="application/pdf" if filename.endswith(".pdf") else "text/csv" if filename.endswith(".csv") else "text/plain"
+    )

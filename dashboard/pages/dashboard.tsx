@@ -108,6 +108,10 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<"parsed" | "reconciliation" | "exports">("parsed");
   const [loadingJob, setLoadingJob] = useState(false);
   const [salesReconTab, setSalesReconTab] = useState<"missing_gstr1" | "missing_sales" | "mismatches">("missing_gstr1");
+  const [samples, setSamples] = useState<Array<{filename: string; name: string; type: string; description: string; size: number}>>([]);
+  const [loadingSamples, setLoadingSamples] = useState(false);
+  const [apiKey, setApiKey] = useState<string>("");
+  const [showApiKeyScreen, setShowApiKeyScreen] = useState(false);
 
   // Helper to get API base URL (relative in production, absolute in dev)
   function getApiBase(): string {
@@ -120,13 +124,22 @@ export default function Dashboard() {
     return "http://localhost:8000"; // Fallback for SSR
   }
 
+  // Helper to get API key
+  function getApiKey(): string {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("docparser_api_key");
+      if (stored) return stored;
+    }
+    return process.env.NEXT_PUBLIC_DOCPARSER_API_KEY || "dev_123";
+  }
+
   // Fetch recent jobs on mount
   async function fetchJobs() {
     try {
       const apiBase = getApiBase();
       const r = await fetch(`${apiBase}/v1/jobs?limit=10`, {
         headers: {
-          "Authorization": `Bearer ${process.env.NEXT_PUBLIC_DOCPARSER_API_KEY || "dev_123"}`
+          "Authorization": `Bearer ${getApiKey()}`
         },
       });
       
@@ -187,7 +200,7 @@ export default function Dashboard() {
       const apiBase = getApiBase();
       const r = await fetch(`${apiBase}/v1/jobs/${jobId}`, {
         headers: {
-          "Authorization": `Bearer ${process.env.NEXT_PUBLIC_DOCPARSER_API_KEY || "dev_123"}`
+          "Authorization": `Bearer ${getApiKey()}`
         },
       });
       
@@ -315,7 +328,7 @@ export default function Dashboard() {
       const r = await fetch(`${apiBase}/v1/parse`, {
         method: "POST",
         headers: { 
-          "Authorization": `Bearer ${process.env.NEXT_PUBLIC_DOCPARSER_API_KEY || "dev_123"}`
+          "Authorization": `Bearer ${getApiKey()}`
         },
         body: fd
       });
@@ -441,7 +454,7 @@ export default function Dashboard() {
     try {
       const r = await fetch(`${apiBase}${path}`, {
         headers: {
-          "Authorization": `Bearer ${process.env.NEXT_PUBLIC_DOCPARSER_API_KEY || "dev_123"}`
+          "Authorization": `Bearer ${getApiKey()}`
         },
       });
       
@@ -467,6 +480,122 @@ export default function Dashboard() {
     }
   }
 
+  async function downloadReconciliationExport(
+    kind: "missing-invoices-gstr1" | "missing-invoices-sales" | "value-mismatches" | "itc-summary"
+  ) {
+    if (!selectedJob) return;
+    
+    const apiBase = getApiBase();
+    let path = "";
+    
+    if (kind === "missing-invoices-gstr1") {
+      path = `/v1/export/reconciliation/missing-invoices/${selectedJob.job_id}?type=gstr1`;
+    } else if (kind === "missing-invoices-sales") {
+      path = `/v1/export/reconciliation/missing-invoices/${selectedJob.job_id}?type=sales_register`;
+    } else if (kind === "value-mismatches") {
+      path = `/v1/export/reconciliation/value-mismatches/${selectedJob.job_id}`;
+    } else if (kind === "itc-summary") {
+      path = `/v1/export/reconciliation/itc-summary/${selectedJob.job_id}`;
+    }
+    
+    try {
+      const r = await fetch(`${apiBase}${path}`, {
+        headers: {
+          "Authorization": `Bearer ${getApiKey()}`
+        },
+      });
+      
+      if (!r.ok) {
+        const errorText = await r.text();
+        console.error("Reconciliation export failed", r.status, errorText);
+        alert(`Export failed: ${r.status === 404 ? "No data found" : "Server error"}`);
+        return;
+      }
+      
+      const data = await r.json();
+      const filename = data.filename || `${kind}_${selectedJob.job_id}.csv`;
+      const content = data.content || "";
+      const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Reconciliation export error", e);
+      alert("Failed to download export");
+    }
+  }
+
+  function copyShareUrl() {
+    if (!selectedJob) return;
+    const shareUrl = `${window.location.origin}/dashboard?job_id=${selectedJob.job_id}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      alert("Share URL copied to clipboard!");
+    }).catch(() => {
+      // Fallback for older browsers
+      const textarea = document.createElement("textarea");
+      textarea.value = shareUrl;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      alert("Share URL copied to clipboard!");
+    });
+  }
+
+  async function fetchSamples() {
+    setLoadingSamples(true);
+    try {
+      const apiBase = getApiBase();
+      const r = await fetch(`${apiBase}/v1/samples`);
+      if (r.ok) {
+        const data = await r.json();
+        setSamples(data.samples || []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch samples", e);
+    } finally {
+      setLoadingSamples(false);
+    }
+  }
+
+  function downloadSample(filename: string) {
+    const apiBase = getApiBase();
+    const url = `${apiBase}/v1/samples/${filename}`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  function handleApiKeySubmit() {
+    if (apiKey.trim()) {
+      localStorage.setItem("docparser_api_key", apiKey.trim());
+      setShowApiKeyScreen(false);
+      // Reload to apply API key
+      window.location.reload();
+    }
+  }
+
+  useEffect(() => {
+    // Check for API key on mount
+    if (typeof window !== "undefined") {
+      const storedKey = localStorage.getItem("docparser_api_key");
+      if (!storedKey && !process.env.NEXT_PUBLIC_DOCPARSER_API_KEY) {
+        setShowApiKeyScreen(true);
+      } else if (storedKey) {
+        setApiKey(storedKey);
+      }
+    }
+    fetchSamples();
+  }, []);
+
   const recon = selectedJob?.meta?.reconciliations?.purchase_vs_gstr3b_itc as PurchaseVsGstr3bRecon | undefined;
   const salesRecon = selectedJob?.meta?.reconciliations?.sales_vs_gstr1 as SalesVsGstr1Recon | undefined;
   const detected = selectedJob?.meta?.detected_doc_type ?? selectedJob?.doc_type ?? null;
@@ -479,6 +608,64 @@ export default function Dashboard() {
     console.log("Purchase recon:", recon);
     console.log("Sales recon:", salesRecon);
     console.log("Has reconciliation tab:", !!(recon || salesRecon));
+  }
+
+  // API Key login screen
+  if (showApiKeyScreen) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex items-center justify-center p-4">
+        <div className="max-w-md w-full rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-lg shadow-black/40">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-xs font-bold text-slate-100 shadow-lg shadow-slate-900/50">
+              DP
+            </div>
+            <div>
+              <h1 className="text-base font-semibold text-slate-50">DocParser Dashboard</h1>
+              <p className="text-[11px] text-slate-400">Enter your API key to continue</p>
+            </div>
+          </div>
+          
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleApiKeySubmit();
+            }}
+            className="space-y-4"
+          >
+            <div>
+              <label htmlFor="api_key" className="block text-[11px] font-medium text-slate-300 mb-2">
+                API Key
+              </label>
+              <input
+                id="api_key"
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Enter your API key"
+                className="w-full rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+                required
+              />
+              <p className="mt-1.5 text-[10px] text-slate-500">
+                Your API key is stored locally and never shared
+              </p>
+            </div>
+            
+            <button
+              type="submit"
+              className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-md shadow-indigo-500/40 hover:bg-indigo-500 focus:outline-none"
+            >
+              Continue
+            </button>
+          </form>
+          
+          <div className="mt-4 pt-4 border-t border-slate-800">
+            <p className="text-[10px] text-slate-500 text-center">
+              Don't have an API key? Contact your administrator or use the default key for testing.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -506,6 +693,16 @@ export default function Dashboard() {
             <Link href="/" className="text-[11px] text-slate-400 hover:text-slate-200">
               API home
             </Link>
+            <button
+              onClick={() => {
+                localStorage.removeItem("docparser_api_key");
+                setShowApiKeyScreen(true);
+              }}
+              className="text-[11px] text-slate-400 hover:text-slate-200"
+              title="Change API key"
+            >
+              🔑 API Key
+            </button>
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-medium text-emerald-300 border border-emerald-500/20">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
               API online
@@ -591,6 +788,44 @@ export default function Dashboard() {
               {error && (
                 <div className="mt-3 rounded-lg bg-rose-500/10 border border-rose-500/30 px-3 py-2 text-[11px] text-rose-300">
                   {error}
+                </div>
+              )}
+            </section>
+
+            {/* Sample Documents section */}
+            <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 shadow-lg shadow-black/40">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-200">
+                  Sample Documents
+                </h2>
+                <span className="text-[10px] text-slate-500">
+                  Test instantly
+                </span>
+              </div>
+              
+              {loadingSamples ? (
+                <div className="text-[11px] text-slate-400">Loading samples...</div>
+              ) : samples.length === 0 ? (
+                <div className="text-[11px] text-slate-400">No sample documents available</div>
+              ) : (
+                <div className="space-y-2">
+                  {samples.map((sample) => (
+                    <button
+                      key={sample.filename}
+                      onClick={() => downloadSample(sample.filename)}
+                      className="w-full flex items-center justify-between rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-left hover:border-indigo-500 hover:bg-slate-900 transition"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] font-medium text-slate-100 truncate">
+                          {sample.name}
+                        </p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          {sample.description}
+                        </p>
+                      </div>
+                      <span className="ml-2 text-[10px] text-indigo-400">⬇</span>
+                    </button>
+                  ))}
                 </div>
               )}
             </section>
@@ -719,7 +954,7 @@ export default function Dashboard() {
                           </div>
                         )}
                         
-                        <div className="mt-2 pt-2 border-t border-slate-800">
+                        <div className="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between">
                           <p className="text-[10px] text-slate-500">
                             Job ID: <span className="font-mono text-slate-300">{selectedJob.job_id}</span>
                             {selectedJob.filename && (
@@ -728,6 +963,14 @@ export default function Dashboard() {
                               </>
                             )}
                           </p>
+                          <button
+                            onClick={copyShareUrl}
+                            className="flex items-center gap-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/40 px-2.5 py-1 text-[10px] text-indigo-300 transition"
+                            title="Copy shareable link"
+                          >
+                            <span>🔗</span>
+                            <span>Share</span>
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -948,6 +1191,13 @@ export default function Dashboard() {
                     <p className="mt-3 text-[11px] text-slate-400">
                       Adjust ITC claimed in GSTR-3B or correct the purchase register before filing.
                     </p>
+                    
+                    <button
+                      onClick={() => downloadReconciliationExport("itc-summary")}
+                      className="mt-4 w-full rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/40 px-3 py-2 text-[10px] font-medium text-indigo-300 transition"
+                    >
+                      📥 Export ITC Mismatch Summary → CSV
+                    </button>
                   </section>
                 )}
 
@@ -1087,6 +1337,12 @@ export default function Dashboard() {
                                 Showing first 5 of {salesRecon.missing_in_gstr1.length} invoices. Review all invoices in your sales register.
                               </p>
                             )}
+                            <button
+                              onClick={() => downloadReconciliationExport("missing-invoices-gstr1")}
+                              className="mt-3 w-full rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 px-3 py-2 text-[10px] font-medium text-rose-300 transition"
+                            >
+                              📥 Export Missing in GSTR-1 → CSV
+                            </button>
                           </>
                         ) : (
                           <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 px-3 py-4 text-center">
@@ -1146,6 +1402,12 @@ export default function Dashboard() {
                                 Showing first 5 of {salesRecon.missing_in_sales_register.length} invoices. Add missing invoices to your sales register.
                               </p>
                             )}
+                            <button
+                              onClick={() => downloadReconciliationExport("missing-invoices-sales")}
+                              className="mt-3 w-full rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 px-3 py-2 text-[10px] font-medium text-amber-300 transition"
+                            >
+                              📥 Export Missing in Sales Register → CSV
+                            </button>
                           </>
                         ) : (
                           <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 px-3 py-4 text-center">
@@ -1202,6 +1464,12 @@ export default function Dashboard() {
                                 Showing first 5 of {salesRecon.value_mismatches.length} mismatches. Review and correct values.
                               </p>
                             )}
+                            <button
+                              onClick={() => downloadReconciliationExport("value-mismatches")}
+                              className="mt-3 w-full rounded-lg bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 px-3 py-2 text-[10px] font-medium text-blue-300 transition"
+                            >
+                              📥 Export Value Mismatches → CSV
+                            </button>
                           </>
                         ) : (
                           <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 px-3 py-4 text-center">

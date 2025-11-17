@@ -31,6 +31,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the entire api directory
 COPY api/ /app/
 
+# Copy samples directory for sample documents
+COPY samples/ /app/samples/
+
 # Copy built dashboard static files from builder stage
 COPY --from=dashboard-builder /app/dashboard/out /app/dashboard/out
 
