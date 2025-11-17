@@ -701,6 +701,34 @@ def debug_dashboard():
     
     return result
 
+@app.get("/debug/job/{job_id}")
+def debug_job(job_id: str, authorization: str | None = Header(None), x_api_key: str | None = Header(None, alias="x-api-key")):
+    """Debug endpoint to check job result format."""
+    try:
+        verify_api_key(authorization, x_api_key)
+    except:
+        pass  # Allow without auth for debugging
+    
+    with SessionLocal() as dbs:
+        job = get_job_by_id(dbs, job_id)
+        if not job:
+            return {"error": "Job not found", "job_id": job_id}
+        
+        result_raw = job.result
+        result_parsed = _to_jsonable(result_raw)
+        
+        return {
+            "job_id": job_id,
+            "status": job.status,
+            "doc_type": job.doc_type,
+            "result_type": str(type(result_raw)),
+            "result_parsed_type": str(type(result_parsed)),
+            "result_is_dict": isinstance(result_parsed, dict),
+            "result_is_list": isinstance(result_parsed, list),
+            "result_is_string": isinstance(result_parsed, str),
+            "result_preview": str(result_parsed)[:200] if result_parsed else None,
+        }
+
 @app.get("/debug/api-keys")
 def debug_api_keys():
     """Debug endpoint to check API keys configuration"""
