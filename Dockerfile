@@ -23,8 +23,9 @@ COPY api/ /app/
 ENV PORT=8000
 
 # Expose the port
-EXPOSE $PORT
+EXPOSE 8000
 
 # Run uvicorn with the correct module path
 # Railway will set PORT env var automatically
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# Use shell form to properly expand $PORT variable
+CMD sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
