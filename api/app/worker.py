@@ -33,19 +33,55 @@ def _attach_purchase_vs_gstr3b_recon(
     # Use tenant_id if available, otherwise use empty string to match all jobs (for development)
     search_tenant_id = tenant_id if tenant_id else ""
 
+    # Extract GSTIN and period from current document for smart matching
+    source_gstin = _extract_gstin_from_result(result)
+    source_period_month, source_period_year = _extract_period_from_result(result)
+    
+    logger.info(f"Purchase vs GSTR-3B reconciliation: source_gstin={source_gstin}, period={source_period_month}/{source_period_year}")
+    
     other_job = None
     if doc_type == "purchase_register":
-        other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "gstr3b")
+        logger.info(f"Looking for GSTR-3B job matching GSTIN={source_gstin}, period={source_period_month}/{source_period_year}")
+        # Use smart matching: find by GSTIN and period
+        if source_gstin and source_period_month and source_period_year:
+            other_job = find_matching_job_by_gstin_and_period(
+                dbs, search_tenant_id, "gstr3b",
+                source_gstin, source_period_month, source_period_year
+            )
+        # Fallback to simple doc_type matching if no GSTIN/period
+        if not other_job:
+            logger.info("Falling back to simple doc_type matching (no GSTIN/period available)")
+            other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "gstr3b")
+        
         pr_payload = result
         g3b_payload = getattr(other_job, "result", None) if other_job else None
-        if not other_job:
-            logger.debug(f"No GSTR-3B found for purchase_register reconciliation (tenant_id={search_tenant_id})")
+        if other_job:
+            other_gstin = _extract_gstin_from_result(other_job.result)
+            other_period = _extract_period_from_result(other_job.result)
+            logger.info(f"Found GSTR-3B job {other_job.id} (GSTIN={other_gstin}, period={other_period[0]}/{other_period[1]})")
+        else:
+            logger.warning(f"No matching GSTR-3B found for purchase_register (GSTIN={source_gstin}, period={source_period_month}/{source_period_year})")
     elif doc_type == "gstr3b":
-        other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "purchase_register")
+        logger.info(f"Looking for purchase_register job matching GSTIN={source_gstin}, period={source_period_month}/{source_period_year}")
+        # Use smart matching: find by GSTIN and period
+        if source_gstin and source_period_month and source_period_year:
+            other_job = find_matching_job_by_gstin_and_period(
+                dbs, search_tenant_id, "purchase_register",
+                source_gstin, source_period_month, source_period_year
+            )
+        # Fallback to simple doc_type matching if no GSTIN/period
+        if not other_job:
+            logger.info("Falling back to simple doc_type matching (no GSTIN/period available)")
+            other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "purchase_register")
+        
         pr_payload = getattr(other_job, "result", None) if other_job else None
         g3b_payload = result
-        if not other_job:
-            logger.debug(f"No purchase_register found for GSTR-3B reconciliation (tenant_id={search_tenant_id})")
+        if other_job:
+            other_gstin = _extract_gstin_from_result(other_job.result)
+            other_period = _extract_period_from_result(other_job.result)
+            logger.info(f"Found purchase_register job {other_job.id} (GSTIN={other_gstin}, period={other_period[0]}/{other_period[1]})")
+        else:
+            logger.warning(f"No matching purchase_register found for GSTR-3B (GSTIN={source_gstin}, period={source_period_month}/{source_period_year})")
     else:
         return
 
