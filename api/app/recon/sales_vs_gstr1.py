@@ -170,9 +170,14 @@ def reconcile_sales_register_vs_gstr1(
             g1_taxable = float(g1_entry.get("taxable_value") or 0.0)
             
             if abs(sr_total - g1_total) > tolerance or abs(sr_taxable - g1_taxable) > tolerance:
+                # Flatten structure to match dashboard expectations
                 value_mismatches.append({
                     "invoice_number": sr_entry.get("invoice_number"),
                     "invoice_date": sr_entry.get("invoice_date") or sr_entry.get("date"),
+                    "sales_register_value": sr_total,
+                    "gstr1_value": g1_total,
+                    "difference": round(sr_total - g1_total, 2),
+                    # Also include detailed breakdown for future use
                     "sales_register": {
                         "taxable_value": sr_taxable,
                         "igst": float(sr_entry.get("igst") or 0.0),
@@ -186,10 +191,6 @@ def reconcile_sales_register_vs_gstr1(
                         "cgst": float(g1_entry.get("cgst") or 0.0),
                         "sgst": float(g1_entry.get("sgst") or 0.0),
                         "total": g1_total,
-                    },
-                    "difference": {
-                        "taxable_value": round(sr_taxable - g1_taxable, 2),
-                        "total": round(sr_total - g1_total, 2),
                     },
                 })
     
