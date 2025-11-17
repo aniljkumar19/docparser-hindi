@@ -257,8 +257,7 @@ def find_matching_job_by_gstin_and_period(
     Returns:
         Matching Job or None
     """
-    from sqlalchemy import or_, and_
-    import json
+    from sqlalchemy import or_
     
     if not source_gstin or not source_period_month or not source_period_year:
         return None
