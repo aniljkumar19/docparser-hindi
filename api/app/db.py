@@ -320,3 +320,16 @@ def get_batch_by_id(db, batch_id: str):
 
 def get_jobs_by_batch(db, batch_id: str):
     return db.query(Job).filter(Job.batch_id == batch_id).all()
+
+def update_batch_stats(db, batch_id: str, **kwargs):
+    """Update batch statistics (processed_files, failed_files, etc.)"""
+    batch = db.get(Batch, batch_id)
+    if not batch:
+        return None
+    for k, v in kwargs.items():
+        if hasattr(batch, k):
+            setattr(batch, k, v)
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+    return batch
