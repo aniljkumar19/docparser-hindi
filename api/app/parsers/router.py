@@ -134,6 +134,28 @@ def parse_any(filename: str, data: bytes, forced_doc_type: str | None = None):
     else:
         doc_type, scores, confidences = detect_doc_type_with_scores(cleaned_text)
         conf = confidences.get(doc_type, 0.0)
+        
+        # Special handling: if filename suggests GSTR-1 or sales_register, boost those scores
+        fn_lower = filename.lower()
+        if "gstr1" in fn_lower or "gstr-1" in fn_lower or "gstr_1" in fn_lower:
+            scores.setdefault("gstr", 0)
+            scores["gstr"] += 5  # Strong boost for GSTR-1
+            if scores.get("gstr", 0) > scores.get(doc_type, 0):
+                doc_type = "gstr"
+                conf = min(1.0, confidences.get("gstr", 0.0) + 0.3)
+        elif "sales" in fn_lower and ("register" in fn_lower or "csv" in fn_lower):
+            scores.setdefault("sales_register", 0)
+            scores["sales_register"] += 5  # Strong boost for sales_register
+            if scores.get("sales_register", 0) > scores.get(doc_type, 0):
+                doc_type = "sales_register"
+                conf = min(1.0, confidences.get("sales_register", 0.0) + 0.3)
+        elif "purchase" in fn_lower and ("register" in fn_lower or "csv" in fn_lower):
+            scores.setdefault("purchase_register", 0)
+            scores["purchase_register"] += 5  # Strong boost for purchase_register
+            if scores.get("purchase_register", 0) > scores.get(doc_type, 0):
+                doc_type = "purchase_register"
+                conf = min(1.0, confidences.get("purchase_register", 0.0) + 0.3)
+        
         if conf < 0.35:
             doc_type = "unknown"
         display_doc_type = doc_type
