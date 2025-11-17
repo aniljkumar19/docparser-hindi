@@ -170,7 +170,6 @@ def _extract_period_from_result(result: dict) -> tuple[int | None, int | None]:
         from_date = period.get("from")
         if from_date:
             try:
-                from datetime import datetime
                 dt = datetime.strptime(from_date[:10], "%Y-%m-%d")
                 return (dt.month, dt.year)
             except:
@@ -179,7 +178,6 @@ def _extract_period_from_result(result: dict) -> tuple[int | None, int | None]:
     # Handle string format: "November 2025" or "2025-11"
     if isinstance(period, str):
         try:
-            from datetime import datetime
             # Try various formats
             for fmt in ["%B %Y", "%b %Y", "%Y-%m", "%m/%Y", "%Y/%m"]:
                 try:
