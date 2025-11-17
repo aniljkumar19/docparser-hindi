@@ -661,6 +661,34 @@ def health():
     """JSON health/info endpoint for monitoring and scripts."""
     return {"ok": True, "service": "Doc Parser API PRO", "version": "0.2.0"}
 
+@app.get("/debug/dashboard")
+def debug_dashboard():
+    """Debug endpoint to check dashboard file structure."""
+    dashboard_static_path = Path("/app/dashboard/out")
+    result = {
+        "dashboard_path_exists": dashboard_static_path.exists(),
+        "dashboard_path": str(dashboard_static_path),
+        "files": {}
+    }
+    
+    if dashboard_static_path.exists():
+        # Check for dashboard/index.html
+        dashboard_index = dashboard_static_path / "dashboard" / "index.html"
+        result["files"]["dashboard/index.html"] = dashboard_index.exists()
+        
+        # Check for root index.html
+        root_index = dashboard_static_path / "index.html"
+        result["files"]["index.html"] = root_index.exists()
+        
+        # List top-level files/dirs
+        try:
+            result["top_level"] = [f.name for f in dashboard_static_path.iterdir() if f.is_file()][:10]
+            result["top_level_dirs"] = [f.name for f in dashboard_static_path.iterdir() if f.is_dir()][:10]
+        except Exception as e:
+            result["error"] = str(e)
+    
+    return result
+
 @app.get("/debug/api-keys")
 def debug_api_keys():
     """Debug endpoint to check API keys configuration"""
