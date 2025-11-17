@@ -30,11 +30,14 @@ def get_file_from_s3(key: str) -> bytes:
     
 # add near the bottom of storage.py
 def ensure_bucket():
+    """Ensure S3 bucket exists. Returns True if successful, False otherwise."""
     try:
         s3.head_bucket(Bucket=S3_BUCKET)
         return True
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.debug(f"Bucket check failed: {e}")
+    
     # Create if missing (AWS needs region config unless us-east-1)
     try:
         from urllib.parse import urlparse
@@ -47,6 +50,9 @@ def ensure_bucket():
         else:
             s3.create_bucket(Bucket=S3_BUCKET)
         return True
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.warning(f"Could not create S3 bucket '{S3_BUCKET}': {e}")
+        logging.warning(f"S3_ENDPOINT: {S3_ENDPOINT}")
         return False
 

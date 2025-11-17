@@ -42,7 +42,13 @@ except Exception as e:
     import logging
     logging.error(f"Database initialization failed: {e}")
     # Don't crash on startup - let it fail on first request if needed
-ensure_bucket()  # <- create S3/MinIO bucket if missing (idempotent)
+# Initialize S3/MinIO bucket (with error handling)
+try:
+    ensure_bucket()
+except Exception as e:
+    import logging
+    logging.warning(f"S3/MinIO initialization failed: {e}")
+    logging.warning("File uploads may not work until S3 is configured")
 
 
 MAX_FILE_MB = int(os.getenv("MAX_FILE_MB","15"))
