@@ -57,6 +57,12 @@ In Railway's project settings, add these environment variables:
 - `PORT` - Server port (Railway sets this automatically, don't override)
 
 - `ENV` - Environment name (e.g., `production`)
+  - **Important**: Set to `production` to show "Production" instead of "Development" on the landing page
+
+- `FRONTEND_URL` - URL to your frontend dashboard (optional)
+  - **Example**: `https://your-dashboard.railway.app` or `https://dashboard.yourdomain.com`
+  - If not set, will try to use the first URL from `CORS_ORIGINS`
+  - Used in the footer link on the landing page
 
 ### 3. Provision Services (Optional but Recommended)
 
