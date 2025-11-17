@@ -41,7 +41,10 @@ MAX_FILE_MB = int(os.getenv("MAX_FILE_MB","15"))
 
 app = FastAPI(title="Doc Parser API PRO", version="0.2.0")
 
-origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+# CORS origins - configurable via environment variable
+# Format: comma-separated list of origins, e.g., "http://localhost:3000,https://yourdomain.com"
+cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
