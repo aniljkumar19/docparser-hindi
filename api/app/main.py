@@ -75,7 +75,7 @@ except Exception as e:
     redis = None
     q = None
 
-init_db()
+# init_db() already called above with error handling
 
 WEBHOOKS = {}
 
