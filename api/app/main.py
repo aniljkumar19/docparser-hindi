@@ -1003,16 +1003,58 @@ def push_to_zoho(job_id: str, body: dict, authorization: str = Header(None)):
 
 
 @app.get("/v1/export/json/{job_id}")
-def export_parsed_json(job_id: str, authorization: str = Header(None)):
-    verify_api_key(authorization)
+def export_parsed_json(
+    job_id: str, 
+    authorization: str | None = Header(None),
+    x_api_key: str | None = Header(None, alias="x-api-key")
+):
+    """Export parsed JSON for a completed job."""
+    try:
+        verify_api_key(authorization, x_api_key)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+    
     with SessionLocal() as dbs:
         job = get_job_by_id(dbs, job_id)
-        if not job or job.status != "succeeded" or not job.result:
-            raise HTTPException(status_code=404, detail="job not found or not succeeded")
-        json_body = export_parsed_json_str(job.result)
-        return JSONResponse(
-            content={"filename": f"{job_id}.json", "content": json_body}
-        )
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if job.status != "succeeded":
+            raise HTTPException(status_code=400, detail=f"Job not completed (status: {job.status})")
+        if not job.result:
+            raise HTTPException(status_code=404, detail="Job has no result data")
+        
+        # Ensure result is a dict (might be stored as JSON string)
+        result = _to_jsonable(job.result)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Job result is empty")
+        
+        # If result is a string, try to parse it as JSON
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=500, detail="Job result is not valid JSON")
+        
+        if not isinstance(result, dict):
+            import logging
+            logging.error(f"Job {job_id} result is not a dict: {type(result)}, value: {str(result)[:100]}")
+            # Try to wrap it in a dict if it's a list or other type
+            if isinstance(result, (list, str, int, float)):
+                result = {"data": result}
+            else:
+                raise HTTPException(status_code=500, detail=f"Invalid job result format: {type(result)}")
+        
+        try:
+            json_body = export_parsed_json_str(result)
+            return JSONResponse(
+                content={"filename": f"{job_id}.json", "content": json_body}
+            )
+        except Exception as e:
+            import logging
+            import traceback
+            logging.error(f"Export JSON error for job {job_id}: {e}")
+            logging.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=f"Failed to export JSON: {str(e)}")
 
 
 @app.get("/v1/export/sales-csv/{job_id}")
