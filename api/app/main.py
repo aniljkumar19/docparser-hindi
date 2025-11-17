@@ -598,17 +598,8 @@ def root():
 # Mount static files for dashboard (if they exist)
 dashboard_static_path = Path("/app/dashboard/out")
 if dashboard_static_path.exists():
-    # Serve dashboard static files
+    # Serve dashboard static files - StaticFiles with html=True will serve index.html for directories
     app.mount("/dashboard", StaticFiles(directory=str(dashboard_static_path), html=True), name="dashboard")
-    
-    # Serve dashboard index page
-    @app.get("/dashboard")
-    async def dashboard_index():
-        dashboard_index_path = dashboard_static_path / "dashboard" / "index.html"
-        if dashboard_index_path.exists():
-            return FileResponse(str(dashboard_index_path))
-        # Fallback to root index if dashboard subfolder doesn't exist
-        return FileResponse(str(dashboard_static_path / "index.html"))
 
 
 @app.get("/health")
