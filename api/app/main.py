@@ -210,10 +210,10 @@ def root():
           }
         }
         .hero-heading {
-          font-size: clamp(24px, 3vw, 30px);
+          font-size: clamp(28px, 4vw, 42px);
           line-height: 1.2;
           letter-spacing: -0.03em;
-          margin: 0 0 10px;
+          margin: 0 0 16px;
         }
         .hero-heading span {
           background-image: linear-gradient(to right, #60a5fa, #a855f7);
@@ -221,9 +221,10 @@ def root():
           color: transparent;
         }
         .hero-body {
-          font-size: 13px;
+          font-size: 14px;
           color: var(--muted);
-          max-width: 460px;
+          max-width: 600px;
+          line-height: 1.6;
         }
         .pill-row {
           display: flex;
@@ -249,7 +250,7 @@ def root():
           background:
             radial-gradient(circle at top left, rgba(59,130,246,0.22), transparent 55%),
             radial-gradient(circle at bottom right, rgba(15,23,42,0.9), #020617);
-          padding: 16px 16px 18px;
+          padding: 20px 24px 24px;
           box-shadow:
             0 22px 45px rgba(15, 23, 42, 0.9),
             0 0 0 1px rgba(15,23,42, 1);
