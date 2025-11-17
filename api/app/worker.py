@@ -76,10 +76,13 @@ def _attach_sales_vs_gstr1_recon(
 
     other_job = None
     if doc_type == "sales_register":
+        logger.info(f"Looking for GSTR-1 job for sales_register reconciliation (tenant_id={search_tenant_id})")
         other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "gstr1")
         sr_payload = result
         g1_payload = getattr(other_job, "result", None) if other_job else None
-        if not other_job:
+        if other_job:
+            logger.info(f"Found GSTR-1 job {other_job.id} for sales_register reconciliation")
+        else:
             logger.warning(f"No GSTR-1 found for sales_register reconciliation (tenant_id={search_tenant_id}, doc_type={doc_type})")
             # Try to find any GSTR-1 job regardless of tenant_id for debugging
             all_gstr1 = dbs.query(Job).filter(Job.doc_type == "gstr1", Job.status == "succeeded", Job.result.isnot(None)).order_by(Job.updated_at.desc()).limit(5).all()
@@ -169,12 +172,14 @@ def parse_job_task(job_id: str):
                         final_doc_type = "gstr1"
                     meta["text_content"] = layout_text
 
+            logger.info(f"Processing job {job_id}: doc_type={final_doc_type}, tenant_id={getattr(job, 'tenant_id', None)}")
             _attach_purchase_vs_gstr3b_recon(
                 dbs, getattr(job, "tenant_id", None), final_doc_type, result, meta
             )
             _attach_sales_vs_gstr1_recon(
                 dbs, getattr(job, "tenant_id", None), final_doc_type, result, meta
             )
+            logger.info(f"Reconciliation complete for job {job_id}. Meta reconciliations: {list(meta.get('reconciliations', {}).keys())}")
             update_job_status(
                 dbs,
                 job_id,
