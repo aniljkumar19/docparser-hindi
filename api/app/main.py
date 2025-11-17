@@ -130,7 +130,7 @@ def root():
           align-items: center;
           justify-content: space-between;
           gap: 12px;
-          padding: 12px 16px;
+          padding: 14px 20px;
           border-radius: 999px;
           border: 1px solid rgba(148, 163, 184, 0.35);
           background: radial-gradient(circle at top left, rgba(59,130,246,0.25), transparent 55%),
@@ -250,7 +250,7 @@ def root():
           background:
             radial-gradient(circle at top left, rgba(59,130,246,0.22), transparent 55%),
             radial-gradient(circle at bottom right, rgba(15,23,42,0.9), #020617);
-          padding: 20px 24px 24px;
+          padding: 24px 28px 28px;
           box-shadow:
             0 22px 45px rgba(15, 23, 42, 0.9),
             0 0 0 1px rgba(15,23,42, 1);
@@ -327,7 +327,7 @@ def root():
           background:
             radial-gradient(circle at top, rgba(37,99,235,0.25), transparent 55%),
             rgba(15,23,42, 0.96);
-          padding: 20px 24px 24px;
+          padding: 24px 28px 28px;
           box-shadow:
             0 20px 45px rgba(15,23,42,0.95),
             0 0 0 1px rgba(15,23,42,1);
