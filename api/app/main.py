@@ -267,8 +267,8 @@ def root():
         .card-grid {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 12px 16px;
-          margin-top: 16px;
+          gap: 16px 20px;
+          margin-top: 20px;
           font-size: 12px;
         }
         .card-col h3 {
@@ -287,8 +287,8 @@ def root():
         .meta-row {
           display: grid;
           grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-          gap: 12px;
-          margin-top: 16px;
+          gap: 16px;
+          margin-top: 24px;
           font-size: 11px;
         }
         .meta-row h4 {
