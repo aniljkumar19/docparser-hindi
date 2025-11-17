@@ -322,14 +322,15 @@ def get_jobs_by_batch(db, batch_id: str):
     return db.query(Job).filter(Job.batch_id == batch_id).all()
 
 def update_batch_stats(db, batch_id: str, **kwargs):
-    """Update batch statistics (processed_files, failed_files, etc.)"""
+    """Update batch statistics (processed_files, failed_files, etc.)
+    Increments the current value by the provided amount.
+    """
     batch = db.get(Batch, batch_id)
-    if not batch:
-        return None
-    for k, v in kwargs.items():
-        if hasattr(batch, k):
-            setattr(batch, k, v)
-    db.add(batch)
-    db.commit()
-    db.refresh(batch)
+    if batch:
+        for k, v in kwargs.items():
+            if hasattr(batch, k):
+                current = getattr(batch, k, 0)
+                setattr(batch, k, current + v)
+        db.commit()
+        db.refresh(batch)
     return batch
