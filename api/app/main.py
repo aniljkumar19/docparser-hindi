@@ -121,9 +121,9 @@ def root():
           -webkit-font-smoothing: antialiased;
         }
         .page {
-          max-width: 1400px;
+          max-width: 1700px;
           margin: 0 auto;
-          padding: 32px 24px 40px;
+          padding: 40px 32px 60px;
         }
         header {
           display: flex;
@@ -199,10 +199,10 @@ def root():
           box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.25);
         }
         main {
-          margin-top: 28px;
+          margin-top: 36px;
           display: grid;
           grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-          gap: 32px;
+          gap: 40px;
         }
         @media (max-width: 1024px) {
           main {
