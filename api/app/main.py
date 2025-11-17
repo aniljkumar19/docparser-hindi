@@ -121,9 +121,9 @@ def root():
           -webkit-font-smoothing: antialiased;
         }
         .page {
-          max-width: 1700px;
+          max-width: 1600px;
           margin: 0 auto;
-          padding: 40px 32px 60px;
+          padding: 40px 32px 80px;
         }
         header {
           display: flex;
@@ -199,10 +199,11 @@ def root():
           box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.25);
         }
         main {
-          margin-top: 36px;
+          margin-top: 40px;
           display: grid;
           grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
           gap: 40px;
+          margin-bottom: 40px;
         }
         @media (max-width: 1024px) {
           main {
@@ -410,7 +411,7 @@ def root():
           color: var(--muted);
         }
         footer {
-          margin-top: 22px;
+          margin-top: 48px;
           font-size: 10px;
           color: #6b7280;
           display: flex;
