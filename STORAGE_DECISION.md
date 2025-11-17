@@ -31,30 +31,100 @@ Files are stored in `/app/uploads` on Railway's persistent disk. No S3/AWS confi
 - Automatically uses local storage if S3 is not configured
 - Falls back to local storage if S3 fails
 
-## Backup Options
+## Backup Commands
 
-### Option 1: Railway CLI
+### Quick Backup (Railway CLI)
+
 ```bash
-# SSH into Railway container
+# Connect to Railway container
 railway run bash
 
-# Create backup
-tar -czf uploads-backup.tar.gz /app/uploads
+# Create compressed backup of all uploads
+cd /app
+tar -czf uploads-backup-$(date +%Y%m%d-%H%M%S).tar.gz uploads/
 
-# Download via Railway dashboard or CLI
+# List the backup file
+ls -lh uploads-backup-*.tar.gz
+
+# Exit container
+exit
 ```
 
-### Option 2: Add Backup Endpoint
-Could add an API endpoint to zip and download files:
+### Download Backup from Railway
+
+**Option A: Via Railway Dashboard**
+1. Go to Railway → Your service → Deployments
+2. Click on a deployment
+3. Use the terminal/SSH feature to download the backup file
+
+**Option B: Via Railway CLI**
+```bash
+# Copy file from container to local machine
+railway run cat /app/uploads-backup-*.tar.gz > backup.tar.gz
+```
+
+### Backup Specific Date Range
+
+```bash
+# Connect to Railway
+railway run bash
+
+# Backup files from last 7 days
+cd /app/uploads
+find . -type f -mtime -7 -exec tar -czf recent-uploads.tar.gz {} +
+
+# Backup files older than 30 days (archive)
+find . -type f -mtime +30 -exec tar -czf archive-uploads.tar.gz {} +
+```
+
+### Full Backup Script
+
+```bash
+#!/bin/bash
+# backup-uploads.sh
+
+# Connect to Railway and create backup
+railway run bash << 'EOF'
+cd /app
+BACKUP_FILE="uploads-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+tar -czf "$BACKUP_FILE" uploads/
+echo "Backup created: $BACKUP_FILE"
+ls -lh "$BACKUP_FILE"
+EOF
+```
+
+### Restore from Backup
+
+```bash
+# Connect to Railway
+railway run bash
+
+# Extract backup
+cd /app
+tar -xzf uploads-backup-YYYYMMDD-HHMMSS.tar.gz
+
+# Verify files restored
+ls -la uploads/
+```
+
+### Alternative: Add Backup Endpoint to API
+
+Could add an API endpoint to zip and download files programmatically:
 ```python
 @app.get("/v1/admin/backup-uploads")
-async def backup_uploads():
-    # Zip /app/uploads and return as download
+async def backup_uploads(authorization: str = Header(...)):
+    # Verify admin access
+    # Create zip of /app/uploads
+    # Return as downloadable file
     ...
 ```
 
-### Option 3: Scheduled Backups
-Set up a cron job or scheduled task to periodically backup files to external storage.
+### Scheduled Backups (Future)
+
+Set up a cron job or scheduled task to periodically backup files:
+- Use Railway's cron service
+- Or external scheduler (GitHub Actions, etc.)
+- Backup to S3 or external storage
 
 ## When to Consider S3
 
