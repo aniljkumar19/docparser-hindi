@@ -207,6 +207,22 @@ export default function Dashboard() {
         if (job.status === "queued" || job.status === "processing") {
           pollJob(jobId);
         }
+      } else if (r.status === 404) {
+        // Job not found in API - might be from local dev or deleted
+        console.warn(`Job ${jobId} not found in API (404). Using cached data if available.`);
+        // Keep the cached job if it exists, but show a warning
+        if (selectedJob && selectedJob.job_id === jobId) {
+          // Already showing cached version, that's fine
+          setError("Job not found in server. Showing cached data.");
+        } else {
+          setError("Job not found. It may have been deleted or created in a different environment.");
+          setSelectedJob(null);
+        }
+      } else {
+        console.error("Failed to load job:", r.status, r.statusText);
+        const errorText = await r.text().catch(() => "");
+        console.error("Error response:", errorText);
+        setError(`Failed to load job: ${r.status} ${r.statusText}`);
       }
     } catch (e) {
       console.error("Failed to load job", e);
@@ -233,6 +249,35 @@ export default function Dashboard() {
     // Then fetch fresh data from API
     fetchJobs();
   }, []);
+
+  // Clear sessionStorage if we detect environment mismatch (jobs in cache but API returns empty)
+  useEffect(() => {
+    if (typeof window !== "undefined" && jobs.length === 0 && !loadingJobs) {
+      // Check if we have cached jobs but API returned empty - likely environment mismatch
+      const cached = sessionStorage.getItem("docparser_jobs_list");
+      if (cached) {
+        try {
+          const cachedJobs = JSON.parse(cached);
+          if (cachedJobs.length > 0) {
+            console.warn("Detected environment mismatch: cached jobs exist but API returned empty. Clearing cache.");
+            // Clear all cached data
+            sessionStorage.removeItem("docparser_jobs_list");
+            sessionStorage.removeItem("lastViewedJobId");
+            // Clear all job caches
+            Object.keys(sessionStorage).forEach(key => {
+              if (key.startsWith("docparser_job_")) {
+                sessionStorage.removeItem(key);
+              }
+            });
+            setSelectedJob(null);
+            setError("Switched environments. Please upload new documents.");
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+    }
+  }, [jobs.length, loadingJobs]);
 
   // STEP 8: Session persistence - load last viewed job if no job_id in URL
   useEffect(() => {

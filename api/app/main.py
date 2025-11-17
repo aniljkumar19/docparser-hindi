@@ -842,8 +842,17 @@ async def get_job(job_id: str,
     _, _tenant_id = verify_api_key(authorization, x_api_key)
 
     with SessionLocal() as dbs:
-        job = get_job_by_id(dbs, job_id)
+        try:
+            job = get_job_by_id(dbs, job_id)
+        except Exception as e:
+            import logging
+            logging.error(f"Error fetching job {job_id}: {e}")
+            raise HTTPException(status_code=404, detail=f"Job not found: {str(e)}")
+        
         if not job:
+            # Log for debugging
+            import logging
+            logging.warning(f"Job {job_id} not found in database (tenant_id={_tenant_id})")
             raise HTTPException(status_code=404, detail="Job not found")
 
         result = _to_jsonable(getattr(job, "result", None))
