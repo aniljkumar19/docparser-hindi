@@ -4,6 +4,10 @@ from .db import (
     update_job_status,
     get_metered_item_for_tenant,
     get_latest_job_by_doc_type,
+    find_matching_job_by_gstin_and_period,
+    _normalize_gstin,
+    _extract_gstin_from_result,
+    _extract_period_from_result,
 )
 from .storage import get_file_from_s3
 from .parsers.invoice import parse_bytes_to_result
@@ -74,28 +78,55 @@ def _attach_sales_vs_gstr1_recon(
     search_tenant_id = tenant_id if tenant_id else ""
     logger.info(f"Attempting sales vs GSTR-1 reconciliation for doc_type={doc_type}, tenant_id={search_tenant_id}")
 
+    # Extract GSTIN and period from current document for smart matching
+    source_gstin = _extract_gstin_from_result(result)
+    source_period_month, source_period_year = _extract_period_from_result(result)
+    
+    logger.info(f"Sales vs GSTR-1 reconciliation: source_gstin={source_gstin}, period={source_period_month}/{source_period_year}")
+    
     other_job = None
     if doc_type == "sales_register":
-        logger.info(f"Looking for GSTR-1 job for sales_register reconciliation (tenant_id={search_tenant_id})")
-        other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "gstr1")
+        logger.info(f"Looking for GSTR-1 job matching GSTIN={source_gstin}, period={source_period_month}/{source_period_year}")
+        # Use smart matching: find by GSTIN and period
+        if source_gstin and source_period_month and source_period_year:
+            other_job = find_matching_job_by_gstin_and_period(
+                dbs, search_tenant_id, "gstr1", 
+                source_gstin, source_period_month, source_period_year
+            )
+        # Fallback to simple doc_type matching if no GSTIN/period
+        if not other_job:
+            logger.info("Falling back to simple doc_type matching (no GSTIN/period available)")
+            other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "gstr1")
+        
         sr_payload = result
         g1_payload = getattr(other_job, "result", None) if other_job else None
         if other_job:
-            logger.info(f"Found GSTR-1 job {other_job.id} for sales_register reconciliation")
+            other_gstin = _extract_gstin_from_result(other_job.result)
+            other_period = _extract_period_from_result(other_job.result)
+            logger.info(f"Found GSTR-1 job {other_job.id} (GSTIN={other_gstin}, period={other_period[0]}/{other_period[1]})")
         else:
-            logger.warning(f"No GSTR-1 found for sales_register reconciliation (tenant_id={search_tenant_id}, doc_type={doc_type})")
-            # Try to find any GSTR-1 job regardless of tenant_id for debugging
-            all_gstr1 = dbs.query(Job).filter(Job.doc_type == "gstr1", Job.status == "succeeded", Job.result.isnot(None)).order_by(Job.updated_at.desc()).limit(5).all()
-            logger.info(f"Found {len(all_gstr1)} GSTR-1 jobs in database (any tenant_id): {[j.id for j in all_gstr1]}")
+            logger.warning(f"No matching GSTR-1 found for sales_register (GSTIN={source_gstin}, period={source_period_month}/{source_period_year})")
     elif doc_type == "gstr1":
-        other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "sales_register")
+        logger.info(f"Looking for sales_register job matching GSTIN={source_gstin}, period={source_period_month}/{source_period_year}")
+        # Use smart matching: find by GSTIN and period
+        if source_gstin and source_period_month and source_period_year:
+            other_job = find_matching_job_by_gstin_and_period(
+                dbs, search_tenant_id, "sales_register",
+                source_gstin, source_period_month, source_period_year
+            )
+        # Fallback to simple doc_type matching if no GSTIN/period
+        if not other_job:
+            logger.info("Falling back to simple doc_type matching (no GSTIN/period available)")
+            other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "sales_register")
+        
         sr_payload = getattr(other_job, "result", None) if other_job else None
         g1_payload = result
-        if not other_job:
-            logger.warning(f"No sales_register found for GSTR-1 reconciliation (tenant_id={search_tenant_id}, doc_type={doc_type})")
-            # Try to find any sales_register job regardless of tenant_id for debugging
-            all_sr = dbs.query(Job).filter(Job.doc_type == "sales_register", Job.status == "succeeded", Job.result.isnot(None)).order_by(Job.updated_at.desc()).limit(5).all()
-            logger.info(f"Found {len(all_sr)} sales_register jobs in database (any tenant_id): {[j.id for j in all_sr]}")
+        if other_job:
+            other_gstin = _extract_gstin_from_result(other_job.result)
+            other_period = _extract_period_from_result(other_job.result)
+            logger.info(f"Found sales_register job {other_job.id} (GSTIN={other_gstin}, period={other_period[0]}/{other_period[1]})")
+        else:
+            logger.warning(f"No matching sales_register found for GSTR-1 (GSTIN={source_gstin}, period={source_period_month}/{source_period_year})")
     else:
         logger.debug(f"Sales vs GSTR-1 reconciliation skipped: doc_type={doc_type} is not sales_register or gstr1")
         return

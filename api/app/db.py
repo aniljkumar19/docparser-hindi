@@ -83,18 +83,8 @@ def init_db():
         except Exception as e:
             import logging
             logging.warning(f"Could not create schema {DOCPARSER_SCHEMA}: {e}")
-    
-    # Create all tables in the schema (or without schema for SQLite)
-    try:
-        Base.metadata.create_all(engine)
-    except Exception as e:
-        import logging
-        logging.error(f"Error creating tables: {e}")
-        logging.error(f"DB_URL: {DB_URL[:50]}...")  # Log first 50 chars (hide password)
-        raise
 
-def generate_job_id() -> str:
-    return "job_" + secrets.token_hex(6)
+    Base.metadata.create_all(bind=engine)
 
 def create_job(
     db,
@@ -106,13 +96,11 @@ def create_job(
     meta: dict | None = None,
 ):
     job = Job(
-        id=generate_job_id(),
-        api_key=api_key,
-        tenant_id=tenant_id,     # <-- use the passed tenant_id
         object_key=object_key,
+        api_key=api_key,
+        tenant_id=tenant_id or "",
         filename=filename,
         status="queued",
-        doc_type=None,
         result=None,
         meta=meta or {},
     )
@@ -145,6 +133,84 @@ def get_metered_item_for_tenant(db, tenant_id: str) -> str | None:
     return row[0] if row and row[0] else None
 
 
+# Utility functions for extracting matching criteria
+def _normalize_gstin(gstin: str | None) -> str | None:
+    """Normalize GSTIN: strip whitespace and convert to uppercase."""
+    if not gstin:
+        return None
+    if isinstance(gstin, dict):
+        gstin = gstin.get("value") or gstin.get("gstin")
+    if not isinstance(gstin, str):
+        return None
+    return gstin.strip().upper()
+
+def _extract_period_from_result(result: dict) -> tuple[int | None, int | None]:
+    """Extract period month and year from parsed result.
+    Returns (month, year) or (None, None) if not found.
+    Handles different period formats:
+    - GSTR-1: {"period": {"month": 11, "year": 2025}}
+    - Sales register: {"period": {"from": "2025-11-01", "to": "2025-11-30"}}
+    - Or: {"period": "November 2025"}
+    """
+    if not isinstance(result, dict):
+        return (None, None)
+    
+    period = result.get("period")
+    if not period:
+        return (None, None)
+    
+    # Handle dict format: {"month": 11, "year": 2025}
+    if isinstance(period, dict):
+        month = period.get("month")
+        year = period.get("year")
+        if month and year:
+            return (int(month), int(year))
+        
+        # Handle date range format: {"from": "2025-11-01", "to": "2025-11-30"}
+        from_date = period.get("from")
+        if from_date:
+            try:
+                from datetime import datetime
+                dt = datetime.strptime(from_date[:10], "%Y-%m-%d")
+                return (dt.month, dt.year)
+            except:
+                pass
+    
+    # Handle string format: "November 2025" or "2025-11"
+    if isinstance(period, str):
+        try:
+            from datetime import datetime
+            # Try various formats
+            for fmt in ["%B %Y", "%b %Y", "%Y-%m", "%m/%Y", "%Y/%m"]:
+                try:
+                    dt = datetime.strptime(period.strip(), fmt)
+                    return (dt.month, dt.year)
+                except:
+                    continue
+        except:
+            pass
+    
+    return (None, None)
+
+def _extract_gstin_from_result(result: dict) -> str | None:
+    """Extract GSTIN from parsed result, handling different formats."""
+    if not isinstance(result, dict):
+        return None
+    
+    # Try direct gstin field
+    gstin = result.get("gstin")
+    if gstin:
+        return _normalize_gstin(gstin)
+    
+    # Try seller.gstin (for invoices)
+    seller = result.get("seller")
+    if isinstance(seller, dict):
+        gstin = seller.get("gstin")
+        if gstin:
+            return _normalize_gstin(gstin)
+    
+    return None
+
 # Utility selectors
 def get_latest_job_by_doc_type(db, tenant_id: str, doc_type: str):
     from sqlalchemy import or_
@@ -168,6 +234,74 @@ def get_latest_job_by_doc_type(db, tenant_id: str, doc_type: str):
         )
     return query.order_by(Job.updated_at.desc()).first()
 
+def find_matching_job_by_gstin_and_period(
+    db, 
+    tenant_id: str, 
+    target_doc_type: str,
+    source_gstin: str | None,
+    source_period_month: int | None,
+    source_period_year: int | None,
+    exclude_job_id: str | None = None
+):
+    """Find a matching job by GSTIN and period, regardless of upload order.
+    
+    Args:
+        db: Database session
+        tenant_id: Tenant ID to filter by
+        target_doc_type: The doc_type to search for (e.g., "gstr1" or "sales_register")
+        source_gstin: GSTIN from the source document (normalized)
+        source_period_month: Period month from source (1-12)
+        source_period_year: Period year from source (e.g., 2025)
+        exclude_job_id: Job ID to exclude from search
+    
+    Returns:
+        Matching Job or None
+    """
+    from sqlalchemy import or_, and_
+    import json
+    
+    if not source_gstin or not source_period_month or not source_period_year:
+        return None
+    
+    # Build query
+    if tenant_id:
+        query = db.query(Job).filter(
+            or_(Job.tenant_id == tenant_id, Job.tenant_id == "", Job.tenant_id.is_(None)),
+            Job.doc_type == target_doc_type,
+            Job.status.in_(["succeeded", "needs_review"]),  # Include needs_review status
+            Job.result.isnot(None),
+        )
+    else:
+        query = db.query(Job).filter(
+            or_(Job.tenant_id == "", Job.tenant_id.is_(None)),
+            Job.doc_type == target_doc_type,
+            Job.status.in_(["succeeded", "needs_review"]),
+            Job.result.isnot(None),
+        )
+    
+    if exclude_job_id:
+        query = query.filter(Job.id != exclude_job_id)
+    
+    # Get all candidates and filter by GSTIN and period in Python
+    # (SQLAlchemy JSON queries can be complex, so we do it in Python for reliability)
+    candidates = query.order_by(Job.updated_at.desc()).all()
+    
+    for job in candidates:
+        if not job.result:
+            continue
+        
+        # Extract GSTIN and period from this job's result
+        job_gstin = _extract_gstin_from_result(job.result)
+        job_period_month, job_period_year = _extract_period_from_result(job.result)
+        
+        # Check if GSTIN matches (normalized)
+        if job_gstin and job_gstin == source_gstin:
+            # Check if period matches
+            if job_period_month == source_period_month and job_period_year == source_period_year:
+                return job
+    
+    return None
+
 # Bulk processing functions
 def create_batch(db, *, tenant_id: str, client_id: str = None, batch_name: str = None, total_files: int):
     batch = Batch(
@@ -187,27 +321,3 @@ def get_batch_by_id(db, batch_id: str):
 
 def get_jobs_by_batch(db, batch_id: str):
     return db.query(Job).filter(Job.batch_id == batch_id).all()
-
-def update_batch_stats(db, batch_id: str, **kwargs):
-    batch = db.get(Batch, batch_id)
-    if batch:
-        for k, v in kwargs.items():
-            current = getattr(batch, k, 0)
-            setattr(batch, k, current + v)
-        db.commit()
-
-def create_client(db, *, tenant_id: str, name: str, gstin: str = None, email: str = None, phone: str = None):
-    client = Client(
-        tenant_id=tenant_id,
-        name=name,
-        gstin=gstin,
-        email=email,
-        phone=phone
-    )
-    db.add(client)
-    db.commit()
-    db.refresh(client)
-    return client
-
-def get_client_by_id(db, client_id: str):
-    return db.get(Client, client_id)
