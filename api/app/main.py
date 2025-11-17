@@ -89,6 +89,12 @@ def _to_jsonable(x):
 def root():
     """Simple styled landing/status page for the API."""
     year = time.strftime("%Y")
+    # Get environment info
+    env = os.getenv("ENV", "development").lower()
+    env_label = "Production" if env == "production" else "Development"
+    # Get frontend URL if configured
+    frontend_url = os.getenv("FRONTEND_URL", os.getenv("CORS_ORIGINS", "").split(",")[0] if os.getenv("CORS_ORIGINS") else "")
+    dashboard_text = f'visit the dashboard UI at <a href="{frontend_url}" style="color: #60a5fa; text-decoration: underline;">{frontend_url}</a>' if frontend_url else "dashboard UI available separately"
     html = """
     <!DOCTYPE html>
     <html lang="en">
@@ -526,7 +532,7 @@ def root():
                 <div>
                   <span style="color: var(--muted);">Environment</span>
                   <span style="margin-left: 6px; font-weight: 500; color: var(--text);">
-                    Local / development
+                    {env_label}
                   </span>
                 </div>
               </div>
@@ -578,7 +584,7 @@ def root():
 
         <footer>
           <span>&copy; {year} DocParser. All rights reserved.</span>
-          <span>Backend service&nbsp;&mdash;&nbsp;visit the dashboard UI at <code>http://localhost:3000</code>.</span>
+          <span>Backend service&nbsp;&mdash;&nbsp;{dashboard_text}.</span>
         </footer>
       </div>
     </body>
