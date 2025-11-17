@@ -200,6 +200,11 @@ def _extract_gstin_from_result(result: dict) -> str | None:
     if gstin:
         return _normalize_gstin(gstin)
     
+    # Try gstin_of_business (for sales/purchase registers)
+    gstin = result.get("gstin_of_business")
+    if gstin:
+        return _normalize_gstin(gstin)
+    
     # Try seller.gstin (for invoices)
     seller = result.get("seller")
     if isinstance(seller, dict):
