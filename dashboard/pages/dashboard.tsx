@@ -471,6 +471,16 @@ export default function Dashboard() {
   const salesRecon = selectedJob?.meta?.reconciliations?.sales_vs_gstr1 as SalesVsGstr1Recon | undefined;
   const detected = selectedJob?.meta?.detected_doc_type ?? selectedJob?.doc_type ?? null;
 
+  // Debug: Log reconciliation data
+  if (selectedJob) {
+    console.log("Selected job:", selectedJob.job_id);
+    console.log("Job meta:", selectedJob.meta);
+    console.log("Reconciliations:", selectedJob.meta?.reconciliations);
+    console.log("Purchase recon:", recon);
+    console.log("Sales recon:", salesRecon);
+    console.log("Has reconciliation tab:", !!(recon || salesRecon));
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
       {/* Header */}
