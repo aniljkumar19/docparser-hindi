@@ -595,6 +595,18 @@ def root():
     return HTMLResponse(content=html)
 
 
+# Mount static files for dashboard (if they exist)
+dashboard_static_path = Path("/app/dashboard/out")
+if dashboard_static_path.exists():
+    # Serve dashboard static files
+    app.mount("/dashboard", StaticFiles(directory=str(dashboard_static_path), html=True), name="dashboard")
+    
+    # Redirect /dashboard to /dashboard/ for proper routing
+    @app.get("/dashboard")
+    async def dashboard_redirect():
+        return FileResponse(str(dashboard_static_path / "index.html"))
+
+
 @app.get("/health")
 def health():
     """JSON health/info endpoint for monitoring and scripts."""
