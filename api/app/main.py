@@ -121,9 +121,9 @@ def root():
           -webkit-font-smoothing: antialiased;
         }
         .page {
-          max-width: 960px;
+          max-width: 1400px;
           margin: 0 auto;
-          padding: 32px 16px 40px;
+          padding: 32px 24px 40px;
         }
         header {
           display: flex;
@@ -202,9 +202,9 @@ def root():
           margin-top: 28px;
           display: grid;
           grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-          gap: 24px;
+          gap: 32px;
         }
-        @media (max-width: 800px) {
+        @media (max-width: 1024px) {
           main {
             grid-template-columns: minmax(0, 1fr);
           }
@@ -326,7 +326,7 @@ def root():
           background:
             radial-gradient(circle at top, rgba(37,99,235,0.25), transparent 55%),
             rgba(15,23,42, 0.96);
-          padding: 14px 16px 16px;
+          padding: 20px 24px 24px;
           box-shadow:
             0 20px 45px rgba(15,23,42,0.95),
             0 0 0 1px rgba(15,23,42,1);
