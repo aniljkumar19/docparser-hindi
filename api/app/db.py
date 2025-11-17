@@ -260,19 +260,22 @@ def find_matching_job_by_gstin_and_period(
     if not source_gstin or not source_period_month or not source_period_year:
         return None
     
-    # Build query
+    # Build query - use or_ for status to handle multiple statuses
+    from sqlalchemy import or_
+    status_filter = or_(Job.status == "succeeded", Job.status == "needs_review")
+    
     if tenant_id:
         query = db.query(Job).filter(
             or_(Job.tenant_id == tenant_id, Job.tenant_id == "", Job.tenant_id.is_(None)),
             Job.doc_type == target_doc_type,
-            Job.status.in_(["succeeded", "needs_review"]),  # Include needs_review status
+            status_filter,  # Include needs_review status
             Job.result.isnot(None),
         )
     else:
         query = db.query(Job).filter(
             or_(Job.tenant_id == "", Job.tenant_id.is_(None)),
             Job.doc_type == target_doc_type,
-            Job.status.in_(["succeeded", "needs_review"]),
+            status_filter,
             Job.result.isnot(None),
         )
     
