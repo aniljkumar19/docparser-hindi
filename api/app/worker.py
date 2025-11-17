@@ -23,53 +23,73 @@ logger = logging.getLogger(__name__)
 def _attach_purchase_vs_gstr3b_recon(
     dbs, tenant_id: str | None, doc_type: str, result, meta: dict
 ):
-    if not tenant_id or not isinstance(result, dict):
+    if not isinstance(result, dict):
         return
+
+    # Use tenant_id if available, otherwise use empty string to match all jobs (for development)
+    search_tenant_id = tenant_id if tenant_id else ""
 
     other_job = None
     if doc_type == "purchase_register":
-        other_job = get_latest_job_by_doc_type(dbs, tenant_id, "gstr3b")
+        other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "gstr3b")
         pr_payload = result
         g3b_payload = getattr(other_job, "result", None) if other_job else None
+        if not other_job:
+            logger.debug(f"No GSTR-3B found for purchase_register reconciliation (tenant_id={search_tenant_id})")
     elif doc_type == "gstr3b":
-        other_job = get_latest_job_by_doc_type(dbs, tenant_id, "purchase_register")
+        other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "purchase_register")
         pr_payload = getattr(other_job, "result", None) if other_job else None
         g3b_payload = result
+        if not other_job:
+            logger.debug(f"No purchase_register found for GSTR-3B reconciliation (tenant_id={search_tenant_id})")
     else:
         return
 
     if not pr_payload or not g3b_payload:
+        logger.debug(f"Missing payloads for purchase vs GSTR-3B reconciliation: pr={bool(pr_payload)}, g3b={bool(g3b_payload)}")
         return
 
     try:
         recon = reconcile_pr_vs_gstr3b_itc(pr_payload, g3b_payload)
         if other_job:
             recon["paired_job_id"] = other_job.id
+            recon["source_purchase_register_job_id"] = other_job.id if doc_type == "gstr3b" else None
+            recon["source_purchase_register_filename"] = getattr(other_job, "filename", None) if doc_type == "gstr3b" else None
         recon["source_doc_type"] = doc_type
         meta.setdefault("reconciliations", {})["purchase_vs_gstr3b_itc"] = recon
+        logger.info(f"Purchase vs GSTR-3B reconciliation attached for doc_type={doc_type}, tenant_id={tenant_id}")
     except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Purchase vs GSTR-3B reconciliation failed: {exc}")
         meta.setdefault("reconciliation_errors", []).append(str(exc))
 
 
 def _attach_sales_vs_gstr1_recon(
     dbs, tenant_id: str | None, doc_type: str, result, meta: dict
 ):
-    if not tenant_id or not isinstance(result, dict):
+    if not isinstance(result, dict):
         return
+
+    # Use tenant_id if available, otherwise use empty string to match all jobs (for development)
+    search_tenant_id = tenant_id if tenant_id else ""
 
     other_job = None
     if doc_type == "sales_register":
-        other_job = get_latest_job_by_doc_type(dbs, tenant_id, "gstr1")
+        other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "gstr1")
         sr_payload = result
         g1_payload = getattr(other_job, "result", None) if other_job else None
+        if not other_job:
+            logger.debug(f"No GSTR-1 found for sales_register reconciliation (tenant_id={search_tenant_id})")
     elif doc_type == "gstr1":
-        other_job = get_latest_job_by_doc_type(dbs, tenant_id, "sales_register")
+        other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "sales_register")
         sr_payload = getattr(other_job, "result", None) if other_job else None
         g1_payload = result
+        if not other_job:
+            logger.debug(f"No sales_register found for GSTR-1 reconciliation (tenant_id={search_tenant_id})")
     else:
         return
 
     if not sr_payload or not g1_payload:
+        logger.debug(f"Missing payloads for sales vs GSTR-1 reconciliation: sr={bool(sr_payload)}, g1={bool(g1_payload)}")
         return
 
     try:
@@ -81,7 +101,9 @@ def _attach_sales_vs_gstr1_recon(
             recon["source_gstr1_filename"] = getattr(other_job, "filename", None) if doc_type == "sales_register" else None
         recon["source_doc_type"] = doc_type
         meta.setdefault("reconciliations", {})["sales_vs_gstr1"] = recon
+        logger.info(f"Sales vs GSTR-1 reconciliation attached for doc_type={doc_type}, tenant_id={tenant_id}")
     except Exception as exc:  # noqa: BLE001
+        logger.warning(f"Sales vs GSTR-1 reconciliation failed: {exc}")
         meta.setdefault("reconciliation_errors", []).append(str(exc))
 
 
