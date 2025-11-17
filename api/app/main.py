@@ -93,10 +93,29 @@ def root():
     year = time.strftime("%Y")
     # Get environment info
     env = os.getenv("ENV", "development").lower()
-    env_label = "Production" if env == "production" else "Development"
-    # Get frontend URL if configured
-    frontend_url = os.getenv("FRONTEND_URL", os.getenv("CORS_ORIGINS", "").split(",")[0] if os.getenv("CORS_ORIGINS") else "")
-    dashboard_text = f'visit the dashboard UI at <a href="{frontend_url}" style="color: #60a5fa; text-decoration: underline;">{frontend_url}</a>' if frontend_url else "dashboard UI available separately"
+    # Check if we're on Railway (Railway sets RAILWAY_ENVIRONMENT or RAILWAY_SERVICE_NAME)
+    is_railway = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_NAME"))
+    if env == "production":
+        env_label = "Production"
+        env_description = "Production environment for live usage."
+    elif is_railway:
+        env_label = "Cloud beta (Railway)"
+        env_description = "Use this environment for beta testing with real documents (review outputs before filing)."
+    else:
+        env_label = "Development"
+        env_description = "Use this environment for development & integration testing."
+    
+    # Get frontend URL if configured - construct dashboard URL
+    base_url = os.getenv("FRONTEND_URL") or os.getenv("RAILWAY_PUBLIC_DOMAIN") or (os.getenv("CORS_ORIGINS", "").split(",")[0] if os.getenv("CORS_ORIGINS") else "")
+    if base_url:
+        # Construct dashboard URL (remove protocol if present, add if needed)
+        if base_url.startswith("http://") or base_url.startswith("https://"):
+            dashboard_url = f"{base_url}/dashboard"
+        else:
+            dashboard_url = f"https://{base_url}/dashboard"
+        dashboard_text = f'visit the dashboard UI at <a href="{dashboard_url}" style="color: #60a5fa; text-decoration: underline;">{dashboard_url}</a>'
+    else:
+        dashboard_text = "dashboard UI available separately"
     html = """
     <!DOCTYPE html>
     <html lang="en">
@@ -515,7 +534,7 @@ def root():
                 <div>
                   <div class="panel-title">API status &amp; quick reference</div>
                   <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">
-                    Use this environment for development &amp; integration testing.
+                    {env_description}
                   </div>
                 </div>
                 <div class="status-pill">
@@ -591,7 +610,7 @@ def root():
       </div>
     </body>
     </html>
-    """.replace("{year}", year).replace("{env_label}", env_label).replace("{dashboard_text}", dashboard_text)
+    """.replace("{year}", year).replace("{env_label}", env_label).replace("{env_description}", env_description).replace("{dashboard_text}", dashboard_text)
     return HTMLResponse(content=html)
 
 
