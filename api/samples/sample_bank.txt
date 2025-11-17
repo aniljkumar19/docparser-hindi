@@ -1,0 +1,12 @@
+Acme National Bank
+Account Number: 0123-4567-XX89
+Statement Period: 01/11/2024 - 30/11/2024
+Opening Balance: ₹ 12,500.00
+
+01/11/2024 Salary Credit                    50,000.00            62,500.00
+02/11/2024 UPI Pay Grocery   debit          1,250.50             61,249.50
+03/11/2024 ATM Withdrawal     DR            5,000.00             56,249.50
+05/11/2024 NEFT Refund        credit        2,000.00             58,249.50
+
+Closing Balance: ₹ 58,249.50
+

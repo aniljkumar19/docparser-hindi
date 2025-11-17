@@ -1,0 +1,45 @@
+Draft: GSTR 3B Summary Return
+GSTR-3B (Summary Return)
+
+For the Month of: November 2025
+
+GSTIN: 27ABCDE1234F2Z5
+Legal Name: ABC TRADERS PRIVATE LIMITED
+Trade Name: ABC TRADERS
+Center Jurisdiction: RANGE-II
+State Jurisdiction: MUMBAI-ZONE-3
+
+3.1 Details of Outward Supplies and Inward Supplies Liable to Reverse Charge
+Nature of Supply    Taxable Value IGST  CGST   SGST  Cess
+(a) Outward taxable supplies (other than zero rated) 500,000.00 0.00 15,000.00 15,000.00 0.00
+(b) Outward taxable supplies (zero rated) 0.00 0.00 0.00 0.00 0.00
+(c) Outward exempt/nil-rated supplies 0.00 0.00 0.00 0.00 0.00
+(d) Inward supplies liable to reverse charge 10,000.00 500.00 0.00 0.00 0.00
+(e) Non-GST outward supplies 0.00 0.00 0.00 0.00 0.00
+
+4. Eligible Input Tax Credit (ITC)
+Description   IGST  CGST   SGST   Cess
+(A) ITC Available (import of goods/services) 2,000 1,000 1,000 0
+(B) ITC from ISD    0      0      0     0
+(C) ITC on inward supplies (other than RCM) 6,000 9,000 9,000 0
+(D) ITC on inward supplies liable to RCM 1,000 0     0      0
+Total ITC Available 9,000  10,000 10,000 0
+
+5. Values of Exempt, Nil, and Non-GST Supplies
+Type   Value
+Exempt Supplies 0.00
+Nil-Rated Supplies  0.00
+Non-GST Supplies    0.00
+
+6.1 Payment of Tax
+Description   IGST  CGST   SGST   Cess
+Tax Payable   2,500 5,000  5,000  0
+Tax Paid through ITC 2,500 5,000  5,000 0
+Tax Paid in Cash    0      0      0     0
+
+Verification
+Name: Rajesh Kumar
+Designation: Authorized Signatory
+Date: 20-12-2025
+Place: Mumbai
+

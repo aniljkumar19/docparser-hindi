@@ -1,0 +1,111 @@
+{
+  "info": {
+    "name": "Doc Parser API Pro",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Root",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer dev_123"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8000/",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000"
+        }
+      }
+    },
+    {
+      "name": "Parse",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer dev_123"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "../samples/sample_invoice.txt"
+            }
+          ]
+        },
+        "url": {
+          "raw": "http://localhost:8000/v1/parse",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "v1",
+            "parse"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Job",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer dev_123"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8000/v1/jobs/{{job_id}}",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "v1",
+            "jobs",
+            "{{job_id}}"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Usage",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer dev_123"
+          }
+        ],
+        "url": {
+          "raw": "http://localhost:8000/v1/usage",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8000",
+          "path": [
+            "v1",
+            "usage"
+          ]
+        }
+      }
+    }
+  ]
+}

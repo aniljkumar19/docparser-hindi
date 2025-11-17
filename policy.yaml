@@ -1,0 +1,43 @@
+version: 1
+
+defaults:
+  residual_tolerance: 1.0
+  tx_rules:
+    - interest_minor_amount
+    - fix_check_plus_50
+
+profiles:
+  HDFC:
+    detect:
+      - "\\bHDFC\\s+BANK\\b"
+      - "\\bIFSC\\s*:\\s*HDFC0"
+    tx_rules:
+      - interest_minor_amount
+      - fix_check_plus_50
+      - join_neft_ref
+
+  ICICI:
+    detect:
+      - "\\bICICI\\b"
+    tx_rules:
+      - interest_minor_amount
+
+  SBI:
+    detect:
+      - "\\bSTATE\\s+BANK\\s+OF\\s+INDIA\\b"
+      - "\\bSBI\\b"
+    tx_rules:
+      - interest_minor_amount
+
+  Axis:
+    detect:
+      - "\\bAXIS\\s+BANK\\b"
+    tx_rules:
+      - interest_minor_amount
+
+  Kotak:
+    detect:
+      - "\\bKOTAK\\b"
+    tx_rules:
+      - interest_minor_amount
+

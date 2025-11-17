@@ -1,0 +1,7 @@
+City Electric Co.
+Account Number: 12345-ABCD
+Service Period: 2024/10/01 - 2024/10/31
+Bill Date: 2024/11/02
+Due Date: 2024/11/15
+kWh: 214
+Amount Due: ₹ 1,284.50

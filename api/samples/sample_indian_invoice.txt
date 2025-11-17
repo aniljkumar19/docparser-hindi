@@ -1,0 +1,43 @@
+TAX INVOICE
+
+Invoice No: INV-2024-001
+Date: 15/01/2024
+
+Seller Details:
+ABC Manufacturing Pvt Ltd
+GSTIN: 29ABCDE1234F1Z5
+Address: 123 Industrial Area, Bangalore, Karnataka - 560001
+Phone: +91-80-12345678
+
+Buyer Details:
+XYZ Trading Company
+GSTIN: 27PQRSX5678L1Z2
+Address: 456 Commercial Street, Mumbai, Maharashtra - 400001
+Phone: +91-22-87654321
+
+Item Details:
+1. Steel Rods - 100 kg x ₹500 = ₹50,000
+   HSN: 7214
+   CGST (9%): ₹4,500
+   SGST (9%): ₹4,500
+
+2. Cement Bags - 50 bags x ₹400 = ₹20,000
+   HSN: 2523
+   CGST (9%): ₹1,800
+   SGST (9%): ₹1,800
+
+Subtotal: ₹70,000
+CGST (9%): ₹6,300
+SGST (9%): ₹6,300
+Total: ₹82,600
+
+Payment Terms: 30 days
+Place of Supply: Maharashtra (27)
+Reverse Charge: No
+
+Bank Details:
+Account Name: ABC Manufacturing Pvt Ltd
+Account Number: 1234567890
+IFSC: SBIN0001234
+Bank: State Bank of India
+

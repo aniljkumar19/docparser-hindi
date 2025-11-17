@@ -1,0 +1,12 @@
+Invoice: #ACM-0012
+Date: 01/09/2025
+Seller: Acme Pvt Ltd, GSTIN: 29ABCDE1234F1Z5
+Buyer: Bright Retail, GSTIN: 27PQRSX5678L1Z2
+
+Item A - 10 qty x ₹1000 = ₹10000
+Item B - 5 qty x ₹500 = ₹2500
+
+Subtotal = ₹12500
+CGST (9%) = ₹1125
+SGST (9%) = ₹1125
+Total = ₹14750

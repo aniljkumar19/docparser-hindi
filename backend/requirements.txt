@@ -1,0 +1,15 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+pydantic==2.9.2
+sqlalchemy==2.0.32
+psycopg2-binary==2.9.9
+redis==5.0.7
+rq==1.16.2
+boto3==1.35.20
+pdfminer.six==20231228
+pillow==10.4.0
+pytesseract==0.3.13
+python-dotenv==1.0.1
+camelot-py==0.11.0
+requests==2.32.3

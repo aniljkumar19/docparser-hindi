@@ -1,0 +1,8 @@
+SuperMart City Center
+Date: 2024/11/01
+Bread              2.99
+Milk               1.49
+Subtotal           4.48
+GST                0.22
+Total              ₹ 4.70
+Thank you!

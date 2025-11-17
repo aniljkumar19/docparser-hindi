@@ -1,0 +1,39 @@
+E-WAY BILL
+
+E-Way Bill No: 291001234567
+Date: 15/01/2024
+Valid Until: 17/01/2024
+
+Transporter Details:
+Transporter Name: Fast Logistics Ltd
+Transporter GSTIN: 29TRANSP1234F1Z5
+Driver Name: Rajesh Kumar
+Driver Mobile: 9876543210
+
+Vehicle Details:
+Vehicle No: KA01AB1234
+Distance: 350 km
+
+Route Details:
+From: Bangalore, Karnataka
+To: Mumbai, Maharashtra
+
+Invoice Details:
+Invoice No: INV-2024-001
+Invoice Date: 15/01/2024
+Invoice Value: ₹82,600
+
+Seller GSTIN: 29ABCDE1234F1Z5
+Buyer GSTIN: 27PQRSX5678L1Z2
+
+Item Details:
+1. Steel Rods - 100 kg
+2. Cement Bags - 50 bags
+
+Total Value: ₹82,600
+Tax Amount: ₹12,600
+Total Invoice Value: ₹82,600
+
+Supply Type: Outward
+Place of Supply: Maharashtra (27)
+

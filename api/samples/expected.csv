@@ -1,0 +1,6 @@
+file,detected_type,date,total,amount_due,items
+sample_invoice.txt,invoice,2025-09-01,,,
+sample_receipt.txt,receipt,2024-11-01,4.7,,
+sample_utility.txt,utility_bill,,,1284.5,
+sample_bank.txt,bank_statement,,,,
+

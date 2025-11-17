@@ -1,0 +1,52 @@
+{
+  "doc_type": "gstr1",
+  "gstin": "27ABCDE1234F2Z5",
+  "legal_name": "ABC TRADERS PRIVATE LIMITED",
+  "trade_name": "ABC TRADERS",
+  "period": {
+    "month": 11,
+    "year": 2025,
+    "label": "November 2025"
+  },
+  "b2b_invoices": [
+    {
+      "invoice_number": "INV-001",
+      "invoice_date": "2025-11-10",
+      "counterparty_gstin": "27XYZDE9876F1Z2",
+      "place_of_supply": "27-Maharashtra",
+      "reverse_charge": false,
+      "invoice_type": "REGULAR",
+      "taxable_value": 100000.0,
+      "igst": 0.0,
+      "cgst": 9000.0,
+      "sgst": 9000.0,
+      "cess": 0.0
+    },
+    {
+      "invoice_number": "INV-002",
+      "invoice_date": "2025-11-15",
+      "counterparty_gstin": "29LMNOP1234Z5A1",
+      "place_of_supply": "29-Karnataka",
+      "reverse_charge": false,
+      "invoice_type": "REGULAR",
+      "taxable_value": 50000.0,
+      "igst": 9000.0,
+      "cgst": 0.0,
+      "sgst": 0.0,
+      "cess": 0.0
+    },
+    {
+      "invoice_number": "INV-003",
+      "invoice_date": "2025-11-20",
+      "counterparty_gstin": "27QWERT1234Z8Z9",
+      "place_of_supply": "27-Maharashtra",
+      "reverse_charge": true,
+      "invoice_type": "REGULAR",
+      "taxable_value": 10000.0,
+      "igst": 0.0,
+      "cgst": 900.0,
+      "sgst": 900.0,
+      "cess": 0.0
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+services:
+  api:
+    volumes:
+      - ./app:/app/app
+  worker:
+    volumes:
+      - ./app:/app/app
