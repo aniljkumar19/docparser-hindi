@@ -599,26 +599,20 @@ def root():
 dashboard_static_path = Path("/app/dashboard/out")
 if dashboard_static_path.exists():
     # Next.js static export creates: out/dashboard/index.html for /dashboard route
-    # We need to serve the dashboard page specifically
+    # Serve the dashboard page explicitly
     @app.get("/dashboard")
     @app.get("/dashboard/")
     async def serve_dashboard():
+        # Next.js creates out/dashboard/index.html for the /dashboard route
         dashboard_index = dashboard_static_path / "dashboard" / "index.html"
         if dashboard_index.exists():
             return FileResponse(str(dashboard_index))
-        # Fallback: try root index if dashboard subfolder doesn't exist
-        fallback = dashboard_static_path / "index.html"
-        if fallback.exists():
-            return FileResponse(str(fallback))
-        return HTMLResponse(content="<h1>Dashboard not found</h1><p>Dashboard files not built. Check build process.</p>", status_code=404)
+        return HTMLResponse(content="<h1>Dashboard not found</h1><p>Dashboard files not built. Expected: /app/dashboard/out/dashboard/index.html</p>", status_code=404)
     
-    # Serve static assets (JS, CSS, etc.) from the out directory
-    app.mount("/_next", StaticFiles(directory=str(dashboard_static_path / "_next")), name="dashboard-assets")
-    # Also serve other static files that might be referenced
-    static_assets_path = dashboard_static_path
-    if static_assets_path.exists():
-        # Mount at root level for assets, but exclude dashboard route
-        pass  # We'll handle assets via the _next mount above
+    # Serve static assets (JS, CSS, etc.) from the _next directory
+    next_static_path = dashboard_static_path / "_next"
+    if next_static_path.exists():
+        app.mount("/_next", StaticFiles(directory=str(next_static_path)), name="dashboard-assets")
 
 
 @app.get("/health")
