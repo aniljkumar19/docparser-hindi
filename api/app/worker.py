@@ -13,6 +13,7 @@ from .parsers.common import extract_text_safely, extract_text_with_layout
 from .parsers.gstr3b import normalize_gstr3b
 from .recon.purchase_vs_gstr3b import reconcile_pr_vs_gstr3b_itc
 from .parsers.gstr1 import normalize_gstr1
+from .recon.sales_vs_gstr1 import reconcile_sales_register_vs_gstr1
 
 import json
 import logging
@@ -46,6 +47,40 @@ def _attach_purchase_vs_gstr3b_recon(
             recon["paired_job_id"] = other_job.id
         recon["source_doc_type"] = doc_type
         meta.setdefault("reconciliations", {})["purchase_vs_gstr3b_itc"] = recon
+    except Exception as exc:  # noqa: BLE001
+        meta.setdefault("reconciliation_errors", []).append(str(exc))
+
+
+def _attach_sales_vs_gstr1_recon(
+    dbs, tenant_id: str | None, doc_type: str, result, meta: dict
+):
+    if not tenant_id or not isinstance(result, dict):
+        return
+
+    other_job = None
+    if doc_type == "sales_register":
+        other_job = get_latest_job_by_doc_type(dbs, tenant_id, "gstr1")
+        sr_payload = result
+        g1_payload = getattr(other_job, "result", None) if other_job else None
+    elif doc_type == "gstr1":
+        other_job = get_latest_job_by_doc_type(dbs, tenant_id, "sales_register")
+        sr_payload = getattr(other_job, "result", None) if other_job else None
+        g1_payload = result
+    else:
+        return
+
+    if not sr_payload or not g1_payload:
+        return
+
+    try:
+        recon = reconcile_sales_register_vs_gstr1(sr_payload, g1_payload)
+        if other_job:
+            recon["source_sales_register_job_id"] = other_job.id if doc_type == "gstr1" else None
+            recon["source_gstr1_job_id"] = other_job.id if doc_type == "sales_register" else None
+            recon["source_sales_register_filename"] = getattr(other_job, "filename", None) if doc_type == "gstr1" else None
+            recon["source_gstr1_filename"] = getattr(other_job, "filename", None) if doc_type == "sales_register" else None
+        recon["source_doc_type"] = doc_type
+        meta.setdefault("reconciliations", {})["sales_vs_gstr1"] = recon
     except Exception as exc:  # noqa: BLE001
         meta.setdefault("reconciliation_errors", []).append(str(exc))
 
@@ -104,6 +139,9 @@ def parse_job_task(job_id: str):
                     meta["text_content"] = layout_text
 
             _attach_purchase_vs_gstr3b_recon(
+                dbs, getattr(job, "tenant_id", None), final_doc_type, result, meta
+            )
+            _attach_sales_vs_gstr1_recon(
                 dbs, getattr(job, "tenant_id", None), final_doc_type, result, meta
             )
             update_job_status(

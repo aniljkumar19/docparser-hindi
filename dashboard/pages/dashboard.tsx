@@ -133,9 +133,29 @@ export default function Dashboard() {
       if (r.ok) {
         const jobsList = await r.json();
         setJobs(jobsList);
+        // Save to sessionStorage for persistence
+        if (typeof window !== "undefined") {
+          try {
+            sessionStorage.setItem("docparser_jobs_list", JSON.stringify(jobsList));
+          } catch (e) {
+            console.warn("Failed to save jobs to sessionStorage", e);
+          }
+        }
       }
     } catch (e) {
       console.error("Failed to fetch jobs", e);
+      // On error, try to load from sessionStorage as fallback
+      if (typeof window !== "undefined") {
+        try {
+          const cached = sessionStorage.getItem("docparser_jobs_list");
+          if (cached) {
+            const jobsList = JSON.parse(cached);
+            setJobs(jobsList);
+          }
+        } catch (e) {
+          console.warn("Failed to load jobs from sessionStorage", e);
+        }
+      }
     } finally {
       setLoadingJobs(false);
     }
@@ -145,6 +165,20 @@ export default function Dashboard() {
   async function loadJobById(jobId: string) {
     setLoadingJob(true);
     try {
+      // Try to load from sessionStorage first for instant display
+      if (typeof window !== "undefined") {
+        try {
+          const cachedJob = sessionStorage.getItem(`docparser_job_${jobId}`);
+          if (cachedJob) {
+            const job: Job = JSON.parse(cachedJob);
+            setSelectedJob(job);
+            // Still fetch fresh data, but show cached version immediately
+          }
+        } catch (e) {
+          console.warn("Failed to load job from sessionStorage", e);
+        }
+      }
+
       const apiBase = getApiBase();
       const r = await fetch(`${apiBase}/v1/jobs/${jobId}`, {
         headers: {
@@ -157,7 +191,12 @@ export default function Dashboard() {
         setSelectedJob(job);
         // Save to sessionStorage for persistence
         if (typeof window !== "undefined") {
-          sessionStorage.setItem("lastViewedJobId", jobId);
+          try {
+            sessionStorage.setItem("lastViewedJobId", jobId);
+            sessionStorage.setItem(`docparser_job_${jobId}`, JSON.stringify(job));
+          } catch (e) {
+            console.warn("Failed to save job to sessionStorage", e);
+          }
         }
         // If job is still processing, start polling
         if (job.status === "queued" || job.status === "processing") {
@@ -173,6 +212,20 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
+    // Load jobs from sessionStorage immediately for instant display
+    if (typeof window !== "undefined") {
+      try {
+        const cached = sessionStorage.getItem("docparser_jobs_list");
+        if (cached) {
+          const jobsList = JSON.parse(cached);
+          setJobs(jobsList);
+          setLoadingJobs(false);
+        }
+      } catch (e) {
+        console.warn("Failed to load jobs from sessionStorage", e);
+      }
+    }
+    // Then fetch fresh data from API
     fetchJobs();
   }, []);
 
@@ -239,6 +292,16 @@ export default function Dashboard() {
       setSelectedJob(newJob);
       setFile(null);
       
+      // Save new job to sessionStorage
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.setItem("lastViewedJobId", j.job_id);
+          sessionStorage.setItem(`docparser_job_${j.job_id}`, JSON.stringify(newJob));
+        } catch (e) {
+          console.warn("Failed to save job to sessionStorage", e);
+        }
+      }
+      
       // Update URL with job_id
       router.push(`/dashboard?job_id=${j.job_id}`, undefined, { shallow: true });
       
@@ -281,8 +344,27 @@ export default function Dashboard() {
         
         const j: Job = await r.json();
         setSelectedJob(j);
+        // Save updated job to sessionStorage
+        if (typeof window !== "undefined") {
+          try {
+            sessionStorage.setItem(`docparser_job_${j.job_id}`, JSON.stringify(j));
+          } catch (e) {
+            console.warn("Failed to save job to sessionStorage", e);
+          }
+        }
         // Update jobs list with latest status
-        setJobs(prev => prev.map(job => job.job_id === j.job_id ? { ...job, status: j.status, doc_type: j.doc_type } : job));
+        setJobs(prev => {
+          const updated = prev.map(job => job.job_id === j.job_id ? { ...job, status: j.status, doc_type: j.doc_type } : job);
+          // Save updated jobs list to sessionStorage
+          if (typeof window !== "undefined") {
+            try {
+              sessionStorage.setItem("docparser_jobs_list", JSON.stringify(updated));
+            } catch (e) {
+              console.warn("Failed to save jobs list to sessionStorage", e);
+            }
+          }
+          return updated;
+        });
         
         if (j.status === "succeeded" || j.status === "failed" || j.status === "needs_review") break;
         await new Promise(res => setTimeout(res, 1000));
@@ -602,7 +684,7 @@ export default function Dashboard() {
                       >
                         Parsed JSON
                       </button>
-                      {recon && (
+                      {(recon || salesRecon) && (
                         <button
                           onClick={() => setActiveTab("reconciliation")}
                           className={`px-4 py-2 text-[11px] font-medium transition ${
