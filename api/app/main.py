@@ -803,9 +803,17 @@ async def list_jobs(
     _, tenant_id = verify_api_key(authorization, x_api_key)
 
     with SessionLocal() as dbs:
+        # If tenant_id is empty, also include jobs with empty tenant_id (for development)
+        query = dbs.query(Job)
+        if tenant_id:
+            query = query.filter(Job.tenant_id == tenant_id)
+        else:
+            # For development: if no tenant_id, show jobs with empty tenant_id
+            from sqlalchemy import or_
+            query = query.filter(or_(Job.tenant_id == "", Job.tenant_id.is_(None)))
+        
         jobs = (
-            dbs.query(Job)
-            .filter(Job.tenant_id == tenant_id)
+            query
             .order_by(Job.created_at.desc())
             .limit(limit)
             .all()
