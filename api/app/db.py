@@ -261,7 +261,6 @@ def find_matching_job_by_gstin_and_period(
         return None
     
     # Build query - use or_ for status to handle multiple statuses
-    from sqlalchemy import or_
     status_filter = or_(Job.status == "succeeded", Job.status == "needs_review")
     
     if tenant_id:
