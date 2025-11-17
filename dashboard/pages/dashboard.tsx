@@ -132,6 +132,7 @@ export default function Dashboard() {
       
       if (r.ok) {
         const jobsList = await r.json();
+        console.log("Fetched jobs:", jobsList.length, jobsList);
         setJobs(jobsList);
         // Save to sessionStorage for persistence
         if (typeof window !== "undefined") {
@@ -141,6 +142,10 @@ export default function Dashboard() {
             console.warn("Failed to save jobs to sessionStorage", e);
           }
         }
+      } else {
+        console.error("Failed to fetch jobs:", r.status, r.statusText);
+        const errorText = await r.text().catch(() => "");
+        console.error("Error response:", errorText);
       }
     } catch (e) {
       console.error("Failed to fetch jobs", e);
