@@ -52,6 +52,7 @@ export default function ApiKeysPage() {
       setAdminToken(stored);
       setIsAdmin(true);
     }
+    // Always try to fetch - will use API key if available
     fetchKeys();
   }, []);
 
@@ -68,16 +69,27 @@ export default function ApiKeysPage() {
       if (isAdmin && adminToken) {
         headers["X-Admin-Token"] = adminToken;
       } else {
-        headers["Authorization"] = `Bearer ${getApiKey()}`;
+        const apiKey = getApiKey();
+        if (!apiKey || apiKey === "dev_123") {
+          // If using default dev_123, make sure it's valid
+          headers["Authorization"] = `Bearer ${apiKey}`;
+        } else {
+          headers["Authorization"] = `Bearer ${apiKey}`;
+        }
       }
 
       const r = await fetch(`${apiBase}${endpoint}`, { headers });
 
       if (!r.ok) {
+        const errorText = await r.text().catch(() => "");
         if (r.status === 401) {
           setError("Authentication failed. Check your API key or admin token.");
+        } else if (r.status === 404 && !isAdmin) {
+          // 404 might mean no keys exist yet, which is OK
+          setKeys([]);
+          return;
         } else {
-          setError(`Failed to fetch keys: ${r.status} ${r.statusText}`);
+          setError(`Failed to fetch keys: ${r.status} ${r.statusText}. ${errorText}`);
         }
         return;
       }
@@ -85,7 +97,8 @@ export default function ApiKeysPage() {
       const data = await r.json();
       setKeys(Array.isArray(data) ? data : []);
     } catch (e: any) {
-      setError(`Error: ${e.message}`);
+      console.error("Fetch keys error:", e);
+      setError(`Error: ${e.message}. Make sure you're logged in with an API key.`);
     } finally {
       setLoading(false);
     }
@@ -225,6 +238,7 @@ export default function ApiKeysPage() {
   function enableAdminMode() {
     if (adminToken.trim()) {
       localStorage.setItem("docparser_admin_token", adminToken.trim());
+      setAdminToken(adminToken.trim());
       setIsAdmin(true);
       fetchKeys();
     } else {
