@@ -444,7 +444,7 @@ export default function Dashboard() {
     }
   }
 
-  async function downloadExport(kind: "json" | "sales-csv" | "purchase-csv" | "sales-zoho" | "tally-xml") {
+  async function downloadExport(kind: "json" | "sales-csv" | "purchase-csv" | "sales-zoho" | "tally-xml" | "tally-csv") {
     if (!selectedJob) return;
     
     const apiBase = getApiBase();
@@ -455,6 +455,7 @@ export default function Dashboard() {
     else if (kind === "purchase-csv") path = `/v1/export/purchase-csv/${selectedJob.job_id}`;
     else if (kind === "sales-zoho") path = `/v1/export/sales-zoho/${selectedJob.job_id}`;
     else if (kind === "tally-xml") path = `/v1/export/tally-xml/${selectedJob.job_id}`;
+    else if (kind === "tally-csv") path = `/v1/export/tally-csv/${selectedJob.job_id}`;
     
     try {
       const r = await fetch(`${apiBase}${path}`, {
@@ -471,7 +472,18 @@ export default function Dashboard() {
       const data = await r.json();
       const filename = data.filename || `${selectedJob.job_id}.txt`;
       const content = data.content || "";
-      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      
+      // Determine MIME type based on export kind
+      let mimeType = "text/plain;charset=utf-8";
+      if (kind === "json" || kind === "sales-zoho") {
+        mimeType = "application/json;charset=utf-8";
+      } else if (kind.includes("csv")) {
+        mimeType = "text/csv;charset=utf-8";
+      } else if (kind === "tally-xml") {
+        mimeType = "application/xml;charset=utf-8";
+      }
+      
+      const blob = new Blob([content], { type: mimeType });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -1546,6 +1558,35 @@ export default function Dashboard() {
                         <span className="text-[10px] text-slate-400 mt-1">Raw parsed data</span>
                       </button>
                       
+                      {selectedJob.doc_type === "purchase_register" && (
+                        <>
+                          <button
+                            onClick={() => downloadExport("purchase-csv")}
+                            className="flex flex-col items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-4 text-center hover:bg-emerald-500/20 transition"
+                          >
+                            <span className="text-lg mb-1">📊</span>
+                            <span className="text-[11px] font-medium text-emerald-200">Purchase CSV</span>
+                            <span className="text-[10px] text-emerald-300/70 mt-1">Standardized format</span>
+                          </button>
+                          <button
+                            onClick={() => downloadExport("tally-xml")}
+                            className="flex flex-col items-center justify-center rounded-xl border border-orange-500/40 bg-orange-500/10 px-4 py-4 text-center hover:bg-orange-500/20 transition"
+                          >
+                            <span className="text-lg mb-1">📋</span>
+                            <span className="text-[11px] font-medium text-orange-200">Tally XML</span>
+                            <span className="text-[10px] text-orange-300/70 mt-1">Import to Tally</span>
+                          </button>
+                          <button
+                            onClick={() => downloadExport("tally-csv")}
+                            className="flex flex-col items-center justify-center rounded-xl border border-orange-500/40 bg-orange-500/10 px-4 py-4 text-center hover:bg-orange-500/20 transition"
+                          >
+                            <span className="text-lg mb-1">📊</span>
+                            <span className="text-[11px] font-medium text-orange-200">Tally CSV</span>
+                            <span className="text-[10px] text-orange-300/70 mt-1">CSV format</span>
+                          </button>
+                        </>
+                      )}
+                      
                       {selectedJob.doc_type === "sales_register" && (
                         <>
                           <button
@@ -1564,29 +1605,44 @@ export default function Dashboard() {
                             <span className="text-[11px] font-medium text-indigo-200">Zoho JSON</span>
                             <span className="text-[10px] text-indigo-300/70 mt-1">Zoho Books ready</span>
                           </button>
+                          <button
+                            onClick={() => downloadExport("tally-xml")}
+                            className="flex flex-col items-center justify-center rounded-xl border border-orange-500/40 bg-orange-500/10 px-4 py-4 text-center hover:bg-orange-500/20 transition"
+                          >
+                            <span className="text-lg mb-1">📋</span>
+                            <span className="text-[11px] font-medium text-orange-200">Tally XML</span>
+                            <span className="text-[10px] text-orange-300/70 mt-1">Import to Tally</span>
+                          </button>
+                          <button
+                            onClick={() => downloadExport("tally-csv")}
+                            className="flex flex-col items-center justify-center rounded-xl border border-orange-500/40 bg-orange-500/10 px-4 py-4 text-center hover:bg-orange-500/20 transition"
+                          >
+                            <span className="text-lg mb-1">📊</span>
+                            <span className="text-[11px] font-medium text-orange-200">Tally CSV</span>
+                            <span className="text-[10px] text-orange-300/70 mt-1">CSV format</span>
+                          </button>
                         </>
                       )}
                       
-                      {selectedJob.doc_type === "purchase_register" && (
-                        <button
-                          onClick={() => downloadExport("purchase-csv")}
-                          className="flex flex-col items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-4 text-center hover:bg-emerald-500/20 transition"
-                        >
-                          <span className="text-lg mb-1">📊</span>
-                          <span className="text-[11px] font-medium text-emerald-200">Purchase CSV</span>
-                          <span className="text-[10px] text-emerald-300/70 mt-1">Standardized format</span>
-                        </button>
-                      )}
-                      
                       {(selectedJob.doc_type === "gst_invoice" || selectedJob.doc_type === "invoice") && (
-                        <button
-                          onClick={() => downloadExport("tally-xml")}
-                          className="flex flex-col items-center justify-center rounded-xl border border-orange-500/40 bg-orange-500/10 px-4 py-4 text-center hover:bg-orange-500/20 transition"
-                        >
-                          <span className="text-lg mb-1">📋</span>
-                          <span className="text-[11px] font-medium text-orange-200">Tally XML</span>
-                          <span className="text-[10px] text-orange-300/70 mt-1">Import to Tally</span>
-                        </button>
+                        <>
+                          <button
+                            onClick={() => downloadExport("tally-xml")}
+                            className="flex flex-col items-center justify-center rounded-xl border border-orange-500/40 bg-orange-500/10 px-4 py-4 text-center hover:bg-orange-500/20 transition"
+                          >
+                            <span className="text-lg mb-1">📋</span>
+                            <span className="text-[11px] font-medium text-orange-200">Tally XML</span>
+                            <span className="text-[10px] text-orange-300/70 mt-1">Import to Tally</span>
+                          </button>
+                          <button
+                            onClick={() => downloadExport("tally-csv")}
+                            className="flex flex-col items-center justify-center rounded-xl border border-orange-500/40 bg-orange-500/10 px-4 py-4 text-center hover:bg-orange-500/20 transition"
+                          >
+                            <span className="text-lg mb-1">📊</span>
+                            <span className="text-[11px] font-medium text-orange-200">Tally CSV</span>
+                            <span className="text-[10px] text-orange-300/70 mt-1">CSV format</span>
+                          </button>
+                        </>
                       )}
                     </div>
                     
@@ -1596,7 +1652,7 @@ export default function Dashboard() {
                       <ul className="list-disc list-inside space-y-0.5 text-[10px]">
                         <li>JSON contains the full parsed structure</li>
                         <li>CSV files are formatted for easy import into Excel</li>
-                        <li>Tally XML can be directly imported into Tally Prime</li>
+                        <li>Tally XML/CSV can be directly imported into Tally Prime</li>
                       </ul>
                     </div>
                   </section>
