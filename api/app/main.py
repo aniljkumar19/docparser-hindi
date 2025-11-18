@@ -7,8 +7,17 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path="/app/.env", override=False)
 
 from fastapi import Header, File, UploadFile, HTTPException, status
-from .security import verify_api_key, reload_api_keys
+from .security import verify_api_key, reload_api_keys, API_KEY_TENANTS
 reload_api_keys()
+
+# Log API keys status on startup
+import logging
+logging.info("=== API Keys Status ===")
+logging.info(f"Loaded {len(API_KEY_TENANTS)} API keys: {list(API_KEY_TENANTS.keys())}")
+logging.info(f"dev_123 available: {'dev_123' in API_KEY_TENANTS}")
+api_keys_env = os.getenv("API_KEYS", "")
+logging.info(f"API_KEYS env var: '{api_keys_env}' (empty={not api_keys_env})")
+logging.info("======================")
 
 # Import new API key system (optional - controlled by env var)
 USE_API_KEY_MIDDLEWARE = os.getenv("USE_API_KEY_MIDDLEWARE", "false").lower() == "true"

@@ -8,11 +8,19 @@ from .db import SessionLocal, ApiKey
 # Legacy: Environment variable-based API keys (for backward compatibility)
 def _load_key_map() -> dict[str, str]:
     # Try multiple sources for API_KEYS
+    # Important: Check if API_KEYS is explicitly set vs not set at all
+    # If explicitly set to empty string, we still use default
     raw = os.getenv("API_KEYS", "").strip()
     
-    # If empty, try default fallback
+    # If empty or not set, use default fallback
+    # This ensures dev_123 always works for development/testing
     if not raw:
         raw = "dev_123:tenant_demo"
+        import logging
+        logging.info("API_KEYS not set, using default: dev_123:tenant_demo")
+    else:
+        import logging
+        logging.info(f"API_KEYS loaded from environment: {raw[:20]}...")
     
     mapping: dict[str, str] = {}
     for token in [s.strip() for s in raw.split(",") if s.strip()]:
@@ -21,6 +29,9 @@ def _load_key_map() -> dict[str, str]:
         else:
             k, t = token, "default"
         mapping[k.strip()] = t.strip()
+    
+    import logging
+    logging.info(f"Loaded {len(mapping)} API keys from env vars: {list(mapping.keys())}")
     return mapping
 
 API_KEY_TENANTS = _load_key_map()
