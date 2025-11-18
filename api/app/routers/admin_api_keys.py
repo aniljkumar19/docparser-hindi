@@ -144,9 +144,20 @@ def list_all_api_keys(
     _: None = Depends(require_admin_token),
 ):
     """List all API keys (admin only). Keys are NOT shown for security."""
-    keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
+    import logging
     
-    return [
+    # Get all keys (including inactive)
+    all_keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
+    active_keys = db.query(ApiKey).filter(ApiKey.is_active == "active").all()
+    
+    logging.info(f"Admin listing API keys: {len(all_keys)} total, {len(active_keys)} active")
+    
+    if len(all_keys) == 0:
+        logging.warning("⚠️  No API keys found in database at all!")
+        # Return empty array with a message in response headers
+        return []
+    
+    result = [
         {
             "id": k.id,
             "name": k.name,
@@ -158,8 +169,11 @@ def list_all_api_keys(
             "created_at": k.created_at.isoformat() if k.created_at else None,
             # Note: api_key is NOT included for security
         }
-        for k in keys
+        for k in all_keys
     ]
+    
+    logging.info(f"Returning {len(result)} keys to admin")
+    return result
 
 @router.post("/{key_id}/revoke", summary="Revoke an API key (admin only)")
 def revoke_api_key(
