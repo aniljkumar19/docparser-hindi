@@ -1349,7 +1349,20 @@ def export_tally_xml(job_id: str, authorization: str = Header(None), x_api_key: 
             
             # Check if this is a register (has entries array)
             if "entries" in result:
-                # Register document - process all entries and combine into one XML
+                # Register document - determine voucher type from job doc_type
+                # Get doc_type from job if available, otherwise infer from register structure
+                doc_type = job.doc_type if hasattr(job, 'doc_type') else None
+                if not doc_type:
+                    # Infer from register structure - purchase has supplier_name, sales has customer_name
+                    first_entry = result.get("entries", [{}])[0] if result.get("entries") else {}
+                    if "supplier_name" in first_entry:
+                        doc_type = "purchase_register"
+                    elif "customer_name" in first_entry:
+                        doc_type = "sales_register"
+                
+                voucher_type = "Purchase" if doc_type == "purchase_register" else "Sales"
+                
+                # Build XML with one TALLYMESSAGE per voucher
                 xml_parts = []
                 xml_parts.append("""<ENVELOPE>
   <HEADER>
@@ -1357,9 +1370,10 @@ def export_tally_xml(job_id: str, authorization: str = Header(None), x_api_key: 
   </HEADER>
   <BODY>
     <IMPORTDATA>
-      <REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME></REQUESTDESC>
-      <REQUESTDATA>
-        <TALLYMESSAGE xmlns:UDF="TallyUDF">""")
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>""")
                 
                 for entry in result.get("entries", []):
                     # Convert register entry to invoice-like structure for Tally XML
@@ -1370,7 +1384,16 @@ def export_tally_xml(job_id: str, authorization: str = Header(None), x_api_key: 
                             "name": entry.get("customer_name") or entry.get("supplier_name") or "",
                             "gstin": entry.get("customer_gstin") or entry.get("supplier_gstin") or ""
                         },
+                        "subtotal": entry.get("taxable_value", 0),
                         "total": entry.get("total_value", 0),
+                        "cgst": entry.get("cgst", 0),
+                        "sgst": entry.get("sgst", 0),
+                        "igst": entry.get("igst", 0),
+                        "taxes": [
+                            {"type": "CGST", "amount": entry.get("cgst", 0)},
+                            {"type": "SGST", "amount": entry.get("sgst", 0)},
+                            {"type": "IGST", "amount": entry.get("igst", 0)}
+                        ],
                         "line_items": [{
                             "desc": "Invoice Item",
                             "qty": 1,
@@ -1378,18 +1401,17 @@ def export_tally_xml(job_id: str, authorization: str = Header(None), x_api_key: 
                             "amount": entry.get("taxable_value", 0)
                         }]
                     }
-                    # Extract just the VOUCHER part from the XML (remove ENVELOPE wrapper)
-                    single_xml = invoice_to_tally_xml(invoice_data)
-                    # Extract VOUCHER content between <TALLYMESSAGE> tags
-                    if "<VOUCHER" in single_xml:
-                        voucher_start = single_xml.find("<VOUCHER")
-                        voucher_end = single_xml.find("</VOUCHER>") + len("</VOUCHER>")
-                        if voucher_start >= 0 and voucher_end > voucher_start:
-                            voucher_xml = single_xml[voucher_start:voucher_end]
-                            xml_parts.append("          " + voucher_xml)
+                    # Generate XML for this voucher with correct voucher type
+                    single_xml = invoice_to_tally_xml(invoice_data, voucher_type=voucher_type)
+                    # Extract the TALLYMESSAGE block (one per voucher)
+                    if "<TALLYMESSAGE" in single_xml:
+                        msg_start = single_xml.find("<TALLYMESSAGE")
+                        msg_end = single_xml.find("</TALLYMESSAGE>") + len("</TALLYMESSAGE>")
+                        if msg_start >= 0 and msg_end > msg_start:
+                            tally_message = single_xml[msg_start:msg_end]
+                            xml_parts.append("        " + tally_message)
                 
-                xml_parts.append("""        </TALLYMESSAGE>
-      </REQUESTDATA>
+                xml_parts.append("""      </REQUESTDATA>
     </IMPORTDATA>
   </BODY>
 </ENVELOPE>""")
