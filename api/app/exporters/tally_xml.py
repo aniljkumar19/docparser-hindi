@@ -37,10 +37,10 @@ def invoice_to_tally_xml(parsed: Dict[str, Any], voucher_type: str = "Sales") ->
         stock_items.append(f"""
             <ALLINVENTORYENTRIES.LIST>
               <STOCKITEMNAME>{desc}</STOCKITEMNAME>
-              <RATE>{rate}</RATE>
-              <AMOUNT>{amount}</AMOUNT>
               <ACTUALQTY>{qty}</ACTUALQTY>
               <BILLEDQTY>{qty}</BILLEDQTY>
+              <RATE>{rate:.2f}</RATE>
+              <AMOUNT>{amount:.2f}</AMOUNT>
             </ALLINVENTORYENTRIES.LIST>
         """)
 
