@@ -76,17 +76,36 @@ def verify_api_key(authorization: str | None, x_api_key: str | None) -> tuple[st
     logging.info(f"Key hash (first 16 chars): {key_hash[:16]}...")
     
     with SessionLocal() as db:
-        # First, check all active keys to see if any match
+        # Check ALL keys (not just active) to see what's in the database
+        all_keys = db.query(ApiKey).all()
         all_active_keys = db.query(ApiKey).filter(ApiKey.is_active == "active").all()
-        logging.info(f"Found {len(all_active_keys)} active API keys in database")
+        logging.info(f"Found {len(all_keys)} total API keys in database ({len(all_active_keys)} active)")
         
-        # Try exact hash match
+        # If no keys at all, log database connection info
+        if len(all_keys) == 0:
+            from .db import DB_URL
+            logging.warning(f"⚠️  No API keys found in database at all!")
+            logging.warning(f"   Database URL: {DB_URL[:50]}..." if len(DB_URL) > 50 else f"   Database URL: {DB_URL}")
+            logging.warning(f"   This might mean:")
+            logging.warning(f"   1. Keys were created in a different database")
+            logging.warning(f"   2. Database connection is pointing to wrong database")
+            logging.warning(f"   3. Keys were never saved (transaction issue)")
+        
+        # Try exact hash match (check both active and inactive)
         api_key_obj = db.query(ApiKey).filter(
-            ApiKey.key_hash == key_hash,
-            ApiKey.is_active == "active"
+            ApiKey.key_hash == key_hash
         ).first()
         
         if api_key_obj:
+            # Check if it's active
+            if api_key_obj.is_active != "active":
+                logging.warning(f"⚠️  API key found but is INACTIVE (status: {api_key_obj.is_active})")
+                logging.warning(f"   Key ID: {api_key_obj.id}, Name: {api_key_obj.name}")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=f"API key is inactive (status: {api_key_obj.is_active})"
+                )
+            
             # Update last_used_at
             from datetime import datetime, timezone
             api_key_obj.last_used_at = datetime.now(timezone.utc)
@@ -97,9 +116,9 @@ def verify_api_key(authorization: str | None, x_api_key: str | None) -> tuple[st
             # Log what we found for debugging
             logging.warning(f"❌ No matching API key found in database")
             logging.warning(f"   Searched hash: {key_hash[:16]}...")
-            logging.warning(f"   Active keys in DB: {len(all_active_keys)}")
-            if all_active_keys:
-                for k in all_active_keys[:3]:  # Show first 3 for debugging
+            logging.warning(f"   Total keys in DB: {len(all_keys)}, Active: {len(all_active_keys)}")
+            if all_keys:
+                for k in all_keys[:5]:  # Show first 5 for debugging
                     logging.warning(f"   - Key ID: {k.id}, Name: {k.name}, Hash: {k.key_hash[:16]}..., Active: {k.is_active}")
     
     # Fallback to legacy env var method (for backward compatibility)

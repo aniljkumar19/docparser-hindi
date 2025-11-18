@@ -33,7 +33,7 @@ from pathlib import Path
 from .security import verify_api_key
 from .storage import save_file_to_s3, get_object_key
 from .db import init_db, SessionLocal, get_job_by_id, create_job, create_batch, get_batch_by_id, get_jobs_by_batch, update_batch_stats, Job
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 from .schemas import JobResponse, UsageResponse, WebhookRegistration
 from .tasks import enqueue_parse
 from .exporters.tally_csv import invoice_to_tally_csv
@@ -797,30 +797,56 @@ def debug_job(job_id: str, authorization: str | None = Header(None), x_api_key: 
 def debug_api_keys():
     """Debug endpoint to check API keys configuration"""
     from .security import API_KEY_TENANTS, _load_key_map, hash_api_key
-    from .db import SessionLocal, ApiKey
+    from .db import SessionLocal, ApiKey, DB_URL
     env_keys = os.getenv("API_KEYS", "")
     reloaded = _load_key_map()
     admin_token = os.getenv("ADMIN_TOKEN", "")
     
     # Check database keys
     db_keys = []
-    with SessionLocal() as db:
-        db_key_objs = db.query(ApiKey).all()
-        for k in db_key_objs:
-            db_keys.append({
-                "id": k.id,
-                "name": k.name,
-                "tenant_id": k.tenant_id,
-                "is_active": k.is_active,
-                "created_at": str(k.created_at) if k.created_at else None,
-            })
+    db_connection_info = {}
+    try:
+        with SessionLocal() as db:
+            # Test database connection
+            db.execute(text("SELECT 1"))
+            
+            # Get all keys
+            db_key_objs = db.query(ApiKey).all()
+            for k in db_key_objs:
+                db_keys.append({
+                    "id": k.id,
+                    "name": k.name,
+                    "tenant_id": k.tenant_id,
+                    "is_active": k.is_active,
+                    "created_at": str(k.created_at) if k.created_at else None,
+                })
+            
+            # Get table info
+            from sqlalchemy import inspect
+            inspector = inspect(db.bind)
+            tables = inspector.get_table_names(schema="docparser" if "postgresql" in DB_URL.lower() else None)
+            db_connection_info = {
+                "connected": True,
+                "database_url_preview": DB_URL[:50] + "..." if len(DB_URL) > 50 else DB_URL,
+                "tables": tables,
+                "api_keys_table_exists": "api_keys" in tables or any("api_key" in t.lower() for t in tables),
+            }
+    except Exception as e:
+        db_connection_info = {
+            "connected": False,
+            "error": str(e),
+            "database_url_preview": DB_URL[:50] + "..." if len(DB_URL) > 50 else DB_URL,
+        }
     
     # Test hash for dev_123
     dev_123_hash = hash_api_key("dev_123")
     dev_123_in_db = False
-    with SessionLocal() as db:
-        dev_123_obj = db.query(ApiKey).filter(ApiKey.key_hash == dev_123_hash).first()
-        dev_123_in_db = dev_123_obj is not None
+    try:
+        with SessionLocal() as db:
+            dev_123_obj = db.query(ApiKey).filter(ApiKey.key_hash == dev_123_hash).first()
+            dev_123_in_db = dev_123_obj is not None
+    except Exception as e:
+        pass
     
     return {
         "env_API_KEYS": env_keys,
@@ -830,6 +856,7 @@ def debug_api_keys():
         "ADMIN_TOKEN_configured": bool(admin_token),
         "database_keys": db_keys,
         "database_key_count": len(db_keys),
+        "database_connection": db_connection_info,
         "dev_123_in_env": "dev_123" in API_KEY_TENANTS,
         "dev_123_in_database": dev_123_in_db,
         "ADMIN_TOKEN_length": len(admin_token) if admin_token else 0,
