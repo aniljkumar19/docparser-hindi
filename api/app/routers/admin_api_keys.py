@@ -11,16 +11,32 @@ import secrets
 
 router = APIRouter(prefix="/admin/api-keys", tags=["admin-api-keys"])
 
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
+def get_admin_token() -> str | None:
+    """Get ADMIN_TOKEN from environment (reloads on each call)"""
+    return os.getenv("ADMIN_TOKEN")
 
 def require_admin_token(x_admin_token: str | None = Header(None, alias="x-admin-token")):
     """Dependency to require admin token for admin endpoints"""
-    if not ADMIN_TOKEN:
+    admin_token = get_admin_token()
+    
+    if not admin_token:
+        import logging
+        logging.error("ADMIN_TOKEN not found in environment variables")
+        logging.error(f"Available env vars with 'ADMIN': {[k for k in os.environ.keys() if 'ADMIN' in k.upper()]}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="ADMIN_TOKEN not configured",
+            detail="ADMIN_TOKEN not configured. Please set ADMIN_TOKEN environment variable in Railway and restart the service.",
         )
-    if x_admin_token != ADMIN_TOKEN:
+    
+    if not x_admin_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing admin token. Provide X-Admin-Token header.",
+        )
+    
+    if x_admin_token != admin_token:
+        import logging
+        logging.warning(f"Admin token mismatch. Expected length: {len(admin_token)}, Received length: {len(x_admin_token) if x_admin_token else 0}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid admin token",

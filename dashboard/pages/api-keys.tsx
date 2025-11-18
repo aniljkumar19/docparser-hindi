@@ -138,6 +138,11 @@ export default function ApiKeysPage() {
         headers["Authorization"] = `Bearer ${getApiKey()}`;
       }
 
+      // For admin endpoint, name is a query parameter
+      const adminUrl = isAdmin
+        ? `${apiBase}${endpoint}?name=${encodeURIComponent(newKeyName)}`
+        : `${apiBase}${endpoint}`;
+      
       const body = isAdmin
         ? undefined
         : JSON.stringify({
@@ -147,7 +152,9 @@ export default function ApiKeysPage() {
             rate_limit_per_hour: 5000,
           });
 
-      const r = await fetch(`${apiBase}${endpoint}`, {
+      console.log("Creating key:", { endpoint: adminUrl, isAdmin, hasToken: !!adminToken });
+
+      const r = await fetch(adminUrl, {
         method: "POST",
         headers,
         body,
