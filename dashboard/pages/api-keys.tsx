@@ -14,6 +14,7 @@ type ApiKey = {
 
 function getApiBase(): string {
   if (typeof window !== "undefined") {
+    // In production, dashboard is served from same origin as API
     return window.location.origin;
   }
   return process.env.NEXT_PUBLIC_DOCPARSER_API_BASE || "http://localhost:8000";
@@ -61,7 +62,7 @@ export default function ApiKeysPage() {
     setError(null);
     try {
       const apiBase = getApiBase();
-      const endpoint = isAdmin ? "/admin/api-keys" : "/v1/api-keys";
+      const endpoint = isAdmin ? "/admin/api-keys" : "/v1/api-keys/";
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -70,35 +71,44 @@ export default function ApiKeysPage() {
         headers["X-Admin-Token"] = adminToken;
       } else {
         const apiKey = getApiKey();
-        if (!apiKey || apiKey === "dev_123") {
-          // If using default dev_123, make sure it's valid
-          headers["Authorization"] = `Bearer ${apiKey}`;
-        } else {
-          headers["Authorization"] = `Bearer ${apiKey}`;
+        if (!apiKey) {
+          setError("No API key found. Please log in with an API key first.");
+          setLoading(false);
+          return;
         }
+        headers["Authorization"] = `Bearer ${apiKey}`;
       }
+
+      console.log("Fetching keys from:", `${apiBase}${endpoint}`);
+      console.log("Using auth:", isAdmin ? "Admin token" : "API key");
 
       const r = await fetch(`${apiBase}${endpoint}`, { headers });
 
+      console.log("Response status:", r.status, r.statusText);
+
       if (!r.ok) {
         const errorText = await r.text().catch(() => "");
+        console.error("Error response:", errorText);
+        
         if (r.status === 401) {
           setError("Authentication failed. Check your API key or admin token.");
         } else if (r.status === 404 && !isAdmin) {
           // 404 might mean no keys exist yet, which is OK
+          console.log("No keys found (404) - this is OK for first time");
           setKeys([]);
           return;
         } else {
-          setError(`Failed to fetch keys: ${r.status} ${r.statusText}. ${errorText}`);
+          setError(`Failed to fetch keys: ${r.status} ${r.statusText}. ${errorText.substring(0, 200)}`);
         }
         return;
       }
 
       const data = await r.json();
+      console.log("Keys fetched:", data);
       setKeys(Array.isArray(data) ? data : []);
     } catch (e: any) {
       console.error("Fetch keys error:", e);
-      setError(`Error: ${e.message}. Make sure you're logged in with an API key.`);
+      setError(`Network error: ${e.message}. Check browser console for details.`);
     } finally {
       setLoading(false);
     }
