@@ -37,13 +37,14 @@ COPY samples/ /app/samples/
 # Copy built dashboard static files from builder stage
 COPY --from=dashboard-builder /app/dashboard/out /app/dashboard/out
 
+# Make start script executable
+RUN chmod +x /app/start.sh
+
 # Railway provides PORT env var, default to 8000 if not set
 ENV PORT=8000
 
 # Expose the port
 EXPOSE 8000
 
-# Run uvicorn with the correct module path
-# Railway will set PORT env var automatically
-# Use shell form to properly expand $PORT variable
-CMD sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+# Use startup script that runs both API server and worker (if Redis available)
+CMD ["/app/start.sh"]
