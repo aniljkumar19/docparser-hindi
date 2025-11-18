@@ -1,0 +1,28 @@
+{
+  "invoice_number": "TEST-001",
+  "date": "2025-01-15",
+  "buyer": {
+    "name": "Intra Supplier",
+    "gstin": "27ABCDEF1234Z1A2"
+  },
+  "subtotal": 10000,
+  "total": 11800,
+  "cgst": 0,
+  "sgst": 0,
+  "igst": 1800,
+  "taxes": [
+    {
+      "type": "IGST",
+      "amount": 1800
+    }
+  ],
+  "line_items": [
+    {
+      "desc": "Test Item 1",
+      "qty": 1,
+      "unit_price": 10000,
+      "amount": 10000
+    }
+  ]
+}
+

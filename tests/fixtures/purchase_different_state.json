@@ -1,0 +1,32 @@
+{
+  "invoice_number": "TEST-002",
+  "date": "2025-01-16",
+  "buyer": {
+    "name": "Inter Supplier",
+    "gstin": "24XYZ9876543Z1B3"
+  },
+  "subtotal": 20000,
+  "total": 23600,
+  "cgst": 1800,
+  "sgst": 1800,
+  "igst": 0,
+  "taxes": [
+    {
+      "type": "CGST",
+      "amount": 1800
+    },
+    {
+      "type": "SGST",
+      "amount": 1800
+    }
+  ],
+  "line_items": [
+    {
+      "desc": "Test Item 2",
+      "qty": 1,
+      "unit_price": 20000,
+      "amount": 20000
+    }
+  ]
+}
+
