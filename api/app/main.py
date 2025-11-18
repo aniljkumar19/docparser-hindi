@@ -1362,6 +1362,32 @@ def export_tally_xml(job_id: str, authorization: str = Header(None), x_api_key: 
                 
                 voucher_type = "Purchase" if doc_type == "purchase_register" else "Sales"
                 
+                # Extract company state code from job metadata or result for GST validation
+                company_state_code = None
+                if hasattr(job, 'meta') and job.meta:
+                    company_gstin = job.meta.get("company_gstin") or job.meta.get("gstin")
+                    if company_gstin and len(company_gstin) >= 2:
+                        company_state_code = company_gstin[:2]
+                # Fallback: try to extract from result metadata
+                if not company_state_code and isinstance(result, dict):
+                    company_gstin = result.get("company_gstin") or result.get("gstin")
+                    if company_gstin and len(str(company_gstin)) >= 2:
+                        company_state_code = str(company_gstin)[:2]
+                
+                # Validate unique voucher numbers across all entries
+                voucher_numbers = []
+                for entry in result.get("entries", []):
+                    vouch_no = entry.get("invoice_number") or ""
+                    if vouch_no:
+                        if vouch_no in voucher_numbers:
+                            import logging
+                            logging.warning(f"⚠️  Duplicate voucher number found: {vouch_no}")
+                        voucher_numbers.append(vouch_no)
+                
+                if len(voucher_numbers) != len(set(voucher_numbers)):
+                    import logging
+                    logging.warning(f"⚠️  Found {len(voucher_numbers) - len(set(voucher_numbers))} duplicate voucher number(s) in register")
+                
                 # Build XML with one TALLYMESSAGE per voucher
                 xml_parts = []
                 xml_parts.append("""<ENVELOPE>
@@ -1401,8 +1427,8 @@ def export_tally_xml(job_id: str, authorization: str = Header(None), x_api_key: 
                             "amount": entry.get("taxable_value", 0)
                         }]
                     }
-                    # Generate XML for this voucher with correct voucher type
-                    single_xml = invoice_to_tally_xml(invoice_data, voucher_type=voucher_type)
+                    # Generate XML for this voucher with correct voucher type and company state code
+                    single_xml = invoice_to_tally_xml(invoice_data, voucher_type=voucher_type, company_state_code=company_state_code)
                     # Extract the TALLYMESSAGE block (one per voucher)
                     if "<TALLYMESSAGE" in single_xml:
                         msg_start = single_xml.find("<TALLYMESSAGE")

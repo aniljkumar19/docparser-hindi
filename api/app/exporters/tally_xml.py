@@ -13,19 +13,33 @@ def _format_tally_date(date_str: str) -> str:
         date_str = date_str.split("T")[0]
     return date_str.replace("-", "")
 
-def invoice_to_tally_xml(parsed: Dict[str, Any], voucher_type: str = "Sales") -> str:
+def _extract_state_code(gstin: str) -> str | None:
+    """Extract state code (first 2 digits) from GSTIN"""
+    if not gstin or len(gstin) < 2:
+        return None
+    try:
+        return gstin[:2]
+    except:
+        return None
+
+def invoice_to_tally_xml(parsed: Dict[str, Any], voucher_type: str = "Sales", company_state_code: str | None = None) -> str:
     """
     Generate Tally XML for a single invoice/voucher.
     
     Args:
         parsed: Parsed invoice/register entry data
         voucher_type: "Sales" or "Purchase" - determines voucher type and ledger structure
+        company_state_code: Company's state code (first 2 digits of GSTIN) for GST type validation
     """
     inv_no = (parsed.get("invoice_number") or {}).get("value") if isinstance(parsed.get("invoice_number"), dict) else parsed.get("invoice_number")
     date = (parsed.get("date") or {}).get("value") if isinstance(parsed.get("date"), dict) else parsed.get("date")
     buyer = parsed.get("buyer") or {}
     party_name = escape(str(buyer.get("name") or "Buyer"))
-    gstin = escape(str(buyer.get("gstin") or ""))
+    gstin_raw = str(buyer.get("gstin") or "")
+    gstin = escape(gstin_raw)  # Escaped for XML
+    
+    # Normalize stock item name (remove trailing spaces, ensure consistent casing)
+    stock_item_name = "Invoice Item"  # Default, can be made configurable
     
     # Format date for Tally (YYYYMMDD)
     formatted_date = _format_tally_date(date or "")
@@ -33,12 +47,16 @@ def invoice_to_tally_xml(parsed: Dict[str, Any], voucher_type: str = "Sales") ->
     stock_items = []
     for li in parsed.get("line_items", []):
         desc = escape(str(li.get("desc", "Item")))
+        # Normalize stock item name: trim spaces, consistent casing
+        desc_normalized = desc.strip()
+        if not desc_normalized:
+            desc_normalized = stock_item_name
         qty = li.get("qty", 0)
         rate = li.get("unit_price", 0)
         amount = li.get("amount", 0)
         stock_items.append(f"""
             <ALLINVENTORYENTRIES.LIST>
-              <STOCKITEMNAME>{desc}</STOCKITEMNAME>
+              <STOCKITEMNAME>{desc_normalized}</STOCKITEMNAME>
               <ACTUALQTY>{qty}</ACTUALQTY>
               <BILLEDQTY>{qty}</BILLEDQTY>
               <RATE>{rate:.2f}</RATE>
@@ -227,6 +245,46 @@ def invoice_to_tally_xml(parsed: Dict[str, Any], voucher_type: str = "Sales") ->
             logging.warning(f"⚠️  Base ({taxable_value:.2f}) + Tax ({cgst + sgst + igst:.2f}) = {calculated_total:.2f}, but total is {total:.2f}")
         else:
             logging.info(f"✅ GST validation passed: Base ({taxable_value:.2f}) + Tax ({cgst + sgst + igst:.2f}) = Total ({total:.2f})")
+        
+        # GST Type Selection Logic Validation (CGST+SGST vs IGST based on state codes)
+        if company_state_code and gstin_raw:
+            supplier_state_code = _extract_state_code(gstin_raw)
+            if supplier_state_code:
+                if company_state_code == supplier_state_code:
+                    # Same state - should use CGST + SGST
+                    if igst > 0:
+                        logging.warning(f"⚠️  GST Type Mismatch: Company state ({company_state_code}) = Supplier state ({supplier_state_code}) → Should use CGST+SGST, but IGST is present")
+                    if cgst == 0 and sgst == 0 and igst == 0:
+                        logging.warning(f"⚠️  GST Type Mismatch: Same state transaction but no taxes found")
+                else:
+                    # Different state - should use IGST
+                    if cgst > 0 or sgst > 0:
+                        logging.warning(f"⚠️  GST Type Mismatch: Company state ({company_state_code}) ≠ Supplier state ({supplier_state_code}) → Should use IGST, but CGST/SGST are present")
+                    if igst == 0 and (cgst == 0 and sgst == 0):
+                        logging.warning(f"⚠️  GST Type Mismatch: Inter-state transaction but no IGST found")
+    
+    # Validate Sign Conventions
+    # For Purchase: Debits positive (ISDEEMEDPOSITIVE=No), Credits negative (ISDEEMEDPOSITIVE=Yes)
+    # For Sales: Debits positive (ISDEEMEDPOSITIVE=No), Credits negative (ISDEEMEDPOSITIVE=Yes)
+    for entry in ledger_entries:
+        if "<ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>" in entry:
+            # Debit - should be positive
+            if "<AMOUNT>-" in entry:
+                logging.warning(f"⚠️  Sign Convention Error: Debit entry has negative amount (should be positive)")
+        elif "<ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>" in entry:
+            # Credit - should be negative
+            if "<AMOUNT>" in entry and not "<AMOUNT>-" in entry:
+                amount_match = entry.split("<AMOUNT>")[1].split("</AMOUNT>")[0] if "<AMOUNT>" in entry else ""
+                try:
+                    if float(amount_match) > 0:
+                        logging.warning(f"⚠️  Sign Convention Error: Credit entry has positive amount (should be negative)")
+                except:
+                    pass
+    
+    # Validate Required Voucher Tags
+    required_tags = ["DATE", "VOUCHERTYPENAME", "VCHTYPE", "VOUCHERNUMBER", "PARTYLEDGERNAME"]
+    missing_tags = []
+    # We'll check these after XML is generated
     
     body = f"""<ENVELOPE>
   <HEADER>
@@ -256,4 +314,16 @@ def invoice_to_tally_xml(parsed: Dict[str, Any], voucher_type: str = "Sales") ->
     </IMPORTDATA>
   </BODY>
 </ENVELOPE>"""
+    
+    # Validate Required Voucher Tags exist in generated XML
+    for tag in required_tags:
+        if f"<{tag}>" not in body:
+            logging.error(f"❌ Missing required tag: <{tag}>")
+    
+    # Validate EFFECTIVEDATE, PARTYGSTIN, ISINVOICE (optional but recommended)
+    recommended_tags = ["EFFECTIVEDATE", "PARTYGSTIN", "ISINVOICE"]
+    for tag in recommended_tags:
+        if f"<{tag}>" not in body:
+            logging.warning(f"⚠️  Missing recommended tag: <{tag}>")
+    
     return body
