@@ -192,6 +192,36 @@ def list_all_api_keys(
     
     logging.info(f"Admin listing API keys: {len(all_keys)} total, {len(active_keys)} active")
     
+    # Debug: Log what we found
+    if all_keys:
+        logging.info(f"Found {len(all_keys)} keys: {[k.id for k in all_keys]}")
+    else:
+        logging.warning("⚠️  Query returned 0 keys, but debug endpoint shows keys exist!")
+        # Try a raw query to see if keys exist
+        try:
+            from sqlalchemy import text
+            # Try with schema prefix if using PostgreSQL
+            if TABLE_SCHEMA:
+                table_name = f"{TABLE_SCHEMA}.api_keys"
+            else:
+                table_name = "api_keys"
+            
+            raw_count = db.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
+            logging.warning(f"Raw SQL COUNT query shows {raw_count} keys in {table_name} table")
+            if raw_count > 0:
+                # Try querying with schema
+                raw_keys = db.execute(text(f"SELECT id, name FROM {table_name} LIMIT 5")).fetchall()
+                logging.warning(f"Raw SQL query found keys: {raw_keys}")
+                # If raw query finds keys but ORM doesn't, there's a schema mismatch
+                logging.error("❌ SCHEMA MISMATCH: Raw SQL found keys but ORM query returned 0!")
+                logging.error(f"   Table name: {table_name}")
+                logging.error(f"   TABLE_SCHEMA: {TABLE_SCHEMA}")
+                logging.error(f"   ApiKey model schema: {ApiKey.__table_args__}")
+        except Exception as e:
+            logging.error(f"Error with raw query: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+    
     # If no keys, check if table exists
     if len(all_keys) == 0:
         logging.warning("⚠️  No API keys found in database at all!")
