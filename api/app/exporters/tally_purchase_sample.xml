@@ -1,0 +1,271 @@
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+
+        <!-- PUR-001 -->
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="Purchase" ACTION="Create">
+            <DATE>20251105</DATE>
+            <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>
+            <VOUCHERNUMBER>PUR-001</VOUCHERNUMBER>
+
+            <PARTYLEDGERNAME>XYZ DISTRIBUTORS</PARTYLEDGERNAME>
+            <PARTYNAME>XYZ DISTRIBUTORS</PARTYNAME>
+            <PARTYGSTIN>27XYZDE9876F1Z2</PARTYGSTIN>
+
+            <ALLINVENTORYENTRIES.LIST>
+              <STOCKITEMNAME>Invoice Item</STOCKITEMNAME>
+              <ACTUALQTY>1</ACTUALQTY>
+              <BILLEDQTY>1</BILLEDQTY>
+              <RATE>100000.00</RATE>
+              <AMOUNT>100000.00</AMOUNT>
+            </ALLINVENTORYENTRIES.LIST>
+
+            <!-- Purchase debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Purchase</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>100000.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Input CGST debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Input CGST</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>9000.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Input SGST debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Input SGST</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>9000.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Supplier credit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>XYZ DISTRIBUTORS</LEDGERNAME>
+              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <AMOUNT>-118000.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+          </VOUCHER>
+        </TALLYMESSAGE>
+
+        <!-- PUR-002 -->
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="Purchase" ACTION="Create">
+            <DATE>20251110</DATE>
+            <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>
+            <VOUCHERNUMBER>PUR-002</VOUCHERNUMBER>
+
+            <PARTYLEDGERNAME>LMN STORES</PARTYLEDGERNAME>
+            <PARTYNAME>LMN STORES</PARTYNAME>
+            <PARTYGSTIN>29LMNOP1234Z5A1</PARTYGSTIN>
+
+            <ALLINVENTORYENTRIES.LIST>
+              <STOCKITEMNAME>Invoice Item</STOCKITEMNAME>
+              <ACTUALQTY>1</ACTUALQTY>
+              <BILLEDQTY>1</BILLEDQTY>
+              <RATE>50000.00</RATE>
+              <AMOUNT>50000.00</AMOUNT>
+            </ALLINVENTORYENTRIES.LIST>
+
+            <!-- Purchase debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Purchase</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>50000.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Input CGST debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Input CGST</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>4500.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Input SGST debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Input SGST</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>4500.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Supplier credit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>LMN STORES</LEDGERNAME>
+              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <AMOUNT>-59000.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+          </VOUCHER>
+        </TALLYMESSAGE>
+
+        <!-- PUR-003 -->
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="Purchase" ACTION="Create">
+            <DATE>20251120</DATE>
+            <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>
+            <VOUCHERNUMBER>PUR-003</VOUCHERNUMBER>
+
+            <PARTYLEDGERNAME>QWER INDUSTRIES</PARTYLEDGERNAME>
+            <PARTYNAME>QWER INDUSTRIES</PARTYNAME>
+            <PARTYGSTIN>27QWERT1234Z8Z9</PARTYGSTIN>
+
+            <ALLINVENTORYENTRIES.LIST>
+              <STOCKITEMNAME>Invoice Item</STOCKITEMNAME>
+              <ACTUALQTY>1</ACTUALQTY>
+              <BILLEDQTY>1</BILLEDQTY>
+              <RATE>10000.00</RATE>
+              <AMOUNT>10000.00</AMOUNT>
+            </ALLINVENTORYENTRIES.LIST>
+
+            <!-- Purchase debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Purchase</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>10000.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Input CGST debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Input CGST</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>900.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Input SGST debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Input SGST</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>900.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Supplier credit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>QWER INDUSTRIES</LEDGERNAME>
+              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <AMOUNT>-11800.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+          </VOUCHER>
+        </TALLYMESSAGE>
+
+        <!-- PUR-004 -->
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="Purchase" ACTION="Create">
+            <DATE>20251128</DATE>
+            <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>
+            <VOUCHERNUMBER>PUR-004</VOUCHERNUMBER>
+
+            <PARTYLEDGERNAME>GLOBAL ELECTRICALS</PARTYLEDGERNAME>
+            <PARTYNAME>GLOBAL ELECTRICALS</PARTYNAME>
+            <PARTYGSTIN>24GLBELEC1234Z9</PARTYGSTIN>
+
+            <ALLINVENTORYENTRIES.LIST>
+              <STOCKITEMNAME>Invoice Item</STOCKITEMNAME>
+              <ACTUALQTY>1</ACTUALQTY>
+              <BILLEDQTY>1</BILLEDQTY>
+              <RATE>25000.00</RATE>
+              <AMOUNT>25000.00</AMOUNT>
+            </ALLINVENTORYENTRIES.LIST>
+
+            <!-- Purchase debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Purchase</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>25000.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Input CGST debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Input CGST</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>2250.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Input SGST debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Input SGST</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>2250.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Supplier credit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>GLOBAL ELECTRICALS</LEDGERNAME>
+              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <AMOUNT>-29500.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+          </VOUCHER>
+        </TALLYMESSAGE>
+
+        <!-- PUR-005 -->
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="Purchase" ACTION="Create">
+            <DATE>20251130</DATE>
+            <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>
+            <VOUCHERNUMBER>PUR-005</VOUCHERNUMBER>
+
+            <PARTYLEDGERNAME>MEGA PLASTICS</PARTYLEDGERNAME>
+            <PARTYNAME>MEGA PLASTICS</PARTYNAME>
+            <PARTYGSTIN>27MEGPLA5432T8Z</PARTYGSTIN>
+
+            <ALLINVENTORYENTRIES.LIST>
+              <STOCKITEMNAME>Invoice Item</STOCKITEMNAME>
+              <ACTUALQTY>1</ACTUALQTY>
+              <BILLEDQTY>1</BILLEDQTY>
+              <RATE>75000.00</RATE>
+              <AMOUNT>75000.00</AMOUNT>
+            </ALLINVENTORYENTRIES.LIST>
+
+            <!-- Purchase debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Purchase</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>75000.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Input CGST debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Input CGST</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>6750.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Input SGST debit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>Input SGST</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>6750.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+            <!-- Supplier credit -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>MEGA PLASTICS</LEDGERNAME>
+              <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <AMOUNT>-88500.00</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+
+          </VOUCHER>
+        </TALLYMESSAGE>
+
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>
+

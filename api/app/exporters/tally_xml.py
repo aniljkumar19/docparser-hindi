@@ -1,5 +1,6 @@
 from typing import Dict, Any
 from xml.sax.saxutils import escape
+import logging
 
 def _format_tally_date(date_str: str) -> str:
     """Convert date from YYYY-MM-DD to YYYYMMDD format for Tally"""
@@ -168,6 +169,33 @@ def invoice_to_tally_xml(parsed: Dict[str, Any], voucher_type: str = "Sales") ->
               <AMOUNT>-{igst:.2f}</AMOUNT>
             </ALLLEDGERENTRIES.LIST>""")
     
+    # Validation: Ensure ledger entries balance (sum to 0)
+    # Calculate sum of all ledger amounts
+    ledger_sum = 0.0
+    for entry in ledger_entries:
+        # Extract amount from ledger entry string
+        if "<AMOUNT>" in entry:
+            try:
+                amount_str = entry.split("<AMOUNT>")[1].split("</AMOUNT>")[0]
+                amount = float(amount_str)
+                ledger_sum += amount
+            except (ValueError, IndexError):
+                pass
+    
+    # Validate: Ledger entries should sum to 0 (balanced)
+    if abs(ledger_sum) > 0.01:  # Allow small floating point differences
+        logging.warning(f"⚠️  Ledger entries do not balance! Sum: {ledger_sum:.2f} (should be 0.00)")
+        logging.warning(f"   Invoice: {inv_no}, Total: {total:.2f}, Taxable: {taxable_value:.2f}")
+        logging.warning(f"   CGST: {cgst:.2f}, SGST: {sgst:.2f}, IGST: {igst:.2f}")
+    
+    # Validate: Item amounts vs purchase + tax should reconcile
+    item_total = sum(li.get("amount", 0) for li in parsed.get("line_items", []))
+    expected_total = taxable_value + cgst + sgst + igst
+    if abs(item_total - taxable_value) > 0.01:
+        logging.warning(f"⚠️  Item total ({item_total:.2f}) doesn't match taxable value ({taxable_value:.2f})")
+    if abs(expected_total - total) > 0.01:
+        logging.warning(f"⚠️  Expected total ({expected_total:.2f}) doesn't match actual total ({total:.2f})")
+    
     body = f"""<ENVELOPE>
   <HEADER>
     <TALLYREQUEST>Import Data</TALLYREQUEST>
@@ -181,8 +209,10 @@ def invoice_to_tally_xml(parsed: Dict[str, Any], voucher_type: str = "Sales") ->
         <TALLYMESSAGE xmlns:UDF="TallyUDF">
           <VOUCHER VCHTYPE="{voucher_type}" ACTION="Create">
             <DATE>{formatted_date}</DATE>
+            <EFFECTIVEDATE>{formatted_date}</EFFECTIVEDATE>
             <VOUCHERTYPENAME>{voucher_type_name}</VOUCHERTYPENAME>
             <VOUCHERNUMBER>{escape(str(inv_no or ""))}</VOUCHERNUMBER>
+            <ISINVOICE>Yes</ISINVOICE>
             <PARTYLEDGERNAME>{party_name}</PARTYLEDGERNAME>
             <PARTYNAME>{party_name}</PARTYNAME>
             <PARTYGSTIN>{gstin}</PARTYGSTIN>
