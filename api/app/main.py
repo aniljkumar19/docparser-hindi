@@ -1477,8 +1477,8 @@ def export_parsed_json(
 
 
 @app.get("/v1/export/sales-csv/{job_id}")
-def export_sales_register_csv(job_id: str, authorization: str = Header(None)):
-    verify_api_key(authorization)
+def export_sales_register_csv(job_id: str, authorization: str = Header(None), x_api_key: str = Header(None, alias="x-api-key")):
+    verify_api_key(authorization, x_api_key)
     with SessionLocal() as dbs:
         job = get_job_by_id(dbs, job_id)
         if (
@@ -1495,8 +1495,8 @@ def export_sales_register_csv(job_id: str, authorization: str = Header(None)):
 
 
 @app.get("/v1/export/purchase-csv/{job_id}")
-def export_purchase_register_csv(job_id: str, authorization: str = Header(None)):
-    verify_api_key(authorization)
+def export_purchase_register_csv(job_id: str, authorization: str = Header(None), x_api_key: str = Header(None, alias="x-api-key")):
+    verify_api_key(authorization, x_api_key)
     with SessionLocal() as dbs:
         job = get_job_by_id(dbs, job_id)
         if (
@@ -1513,8 +1513,8 @@ def export_purchase_register_csv(job_id: str, authorization: str = Header(None))
 
 
 @app.get("/v1/export/sales-zoho/{job_id}")
-def export_sales_register_zoho(job_id: str, authorization: str = Header(None)):
-    verify_api_key(authorization)
+def export_sales_register_zoho(job_id: str, authorization: str = Header(None), x_api_key: str = Header(None, alias="x-api-key")):
+    verify_api_key(authorization, x_api_key)
     with SessionLocal() as dbs:
         job = get_job_by_id(dbs, job_id)
         if (
