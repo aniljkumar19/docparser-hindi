@@ -695,6 +695,9 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <Link href="/api-keys" className="text-[11px] text-slate-400 hover:text-slate-200">
+              🔑 API Keys
+            </Link>
             <Link href="/" className="text-[11px] text-slate-400 hover:text-slate-200">
               API home
             </Link>
