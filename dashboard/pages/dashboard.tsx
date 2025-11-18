@@ -397,7 +397,7 @@ export default function Dashboard() {
       while (tries++ < 30) {
         const apiBase = getApiBase();
         const r = await fetch(`${apiBase}/v1/jobs/${id}`, {
-          headers: { "Authorization": `Bearer ${process.env.NEXT_PUBLIC_DOCPARSER_API_KEY || "dev_123"}` }
+          headers: { "Authorization": `Bearer ${getApiKey()}` }
         });
         
         if (!r.ok) {
