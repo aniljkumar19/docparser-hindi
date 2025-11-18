@@ -10,6 +10,11 @@ from fastapi import Header, File, UploadFile, HTTPException, status
 from .security import verify_api_key, reload_api_keys
 reload_api_keys()
 
+# Import new API key system (optional - controlled by env var)
+USE_API_KEY_MIDDLEWARE = os.getenv("USE_API_KEY_MIDDLEWARE", "false").lower() == "true"
+if USE_API_KEY_MIDDLEWARE:
+    from .middleware.auth import ApiKeyAuthMiddleware
+
 from rq import Queue
 from redis import Redis
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
@@ -39,6 +44,9 @@ from .connectors.zoho_books import ZohoBooksClient, map_parsed_to_zoho_invoice
 
 from .storage import save_file_to_s3, get_object_key, ensure_bucket
 
+# Import API key management endpoints
+from .api_keys import router as api_keys_router
+
 # ...
 # Initialize database (with error handling)
 try:
@@ -60,6 +68,9 @@ MAX_FILE_MB = int(os.getenv("MAX_FILE_MB","15"))
 
 app = FastAPI(title="Doc Parser API PRO", version="0.2.0")
 
+# Include API key management router
+app.include_router(api_keys_router)
+
 # CORS origins - configurable via environment variable
 # Format: comma-separated list of origins, e.g., "http://localhost:3000,https://yourdomain.com"
 cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
@@ -71,6 +82,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["Authorization", "Content-Type", "x-api-key", "X-API-Key"],
 )
+
+# Add API key authentication middleware (if enabled)
+# When enabled, this handles auth + rate limiting automatically
+# When disabled, endpoints use the legacy verify_api_key() function
+if USE_API_KEY_MIDDLEWARE:
+    app.add_middleware(ApiKeyAuthMiddleware)
 
 # Redis connection - make it optional
 redis_url = os.getenv("REDIS_URL", "")

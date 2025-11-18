@@ -71,6 +71,22 @@ class Client(Base):
     phone = Column(String, nullable=True)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
+class ApiKey(Base):
+    """API Keys for authentication and rate limiting"""
+    __tablename__ = "api_keys"
+    __table_args__ = {'schema': TABLE_SCHEMA} if TABLE_SCHEMA else {}
+    
+    id = Column(String, primary_key=True, default=lambda: "key_" + uuid.uuid4().hex[:12])
+    key_hash = Column(String, nullable=False, unique=True, index=True)  # Hashed API key (SHA256)
+    tenant_id = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=True)  # User-friendly name (e.g., "Production Key", "Test Key")
+    is_active = Column(String, default="active")  # active, revoked
+    rate_limit_per_minute = Column(Integer, default=60)  # Requests per minute
+    rate_limit_per_hour = Column(Integer, default=1000)  # Requests per hour
+    last_used_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    created_by = Column(String, nullable=True)  # User/tenant who created it
+
 def init_db():
     """Initialize database: create schema if needed, then create tables."""
     # Only create schema for PostgreSQL (not SQLite)
