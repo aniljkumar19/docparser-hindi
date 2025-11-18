@@ -1274,10 +1274,39 @@ def export_tally_csv(job_id: str, authorization: str = Header(None), x_api_key: 
                 w = csv.writer(buf)
                 w.writerow(["Date","Invoice Number","Party Name","GSTIN","Item","Qty","Rate","Amount","CGST","SGST","IGST","Total"])
                 
+                # Auto-fix duplicate voucher numbers: Generate unique numbers
+                voucher_count_map = {}
                 for entry in result.get("entries", []):
+                    vouch_no = entry.get("invoice_number") or ""
+                    if vouch_no:
+                        voucher_count_map[vouch_no] = voucher_count_map.get(vouch_no, 0) + 1
+                
+                duplicates = {k: v for k, v in voucher_count_map.items() if v > 1}
+                if duplicates:
+                    import logging
+                    logging.info(f"✅ Auto-fixing {len(duplicates)} duplicate voucher number(s) in CSV: {list(duplicates.keys())}")
+                
+                voucher_occurrence_map = {}
+                
+                for entry in result.get("entries", []):
+                    # Get original voucher number
+                    original_vouch_no = entry.get("invoice_number") or ""
+                    
+                    # Auto-fix duplicate: Generate unique voucher number
+                    unique_vouch_no = original_vouch_no
+                    if original_vouch_no:
+                        if original_vouch_no in duplicates:
+                            occurrence = voucher_occurrence_map.get(original_vouch_no, 0) + 1
+                            voucher_occurrence_map[original_vouch_no] = occurrence
+                            unique_vouch_no = f"{original_vouch_no}-{occurrence}"
+                            import logging
+                            logging.info(f"✅ Auto-fixed duplicate voucher in CSV: {original_vouch_no} → {unique_vouch_no}")
+                        else:
+                            voucher_occurrence_map[original_vouch_no] = 0
+                    
                     # Convert register entry to invoice-like structure for Tally CSV
                     invoice_data = {
-                        "invoice_number": entry.get("invoice_number"),
+                        "invoice_number": unique_vouch_no,  # Use auto-fixed unique voucher number
                         "date": entry.get("invoice_date"),
                         "buyer": {
                             "name": entry.get("customer_name") or entry.get("supplier_name") or "",
@@ -1374,19 +1403,22 @@ def export_tally_xml(job_id: str, authorization: str = Header(None), x_api_key: 
                     if company_gstin and len(str(company_gstin)) >= 2:
                         company_state_code = str(company_gstin)[:2]
                 
-                # Validate unique voucher numbers across all entries
-                voucher_numbers = []
+                # Auto-fix duplicate voucher numbers: Generate unique numbers
+                # Track voucher number occurrences to detect and fix duplicates
+                voucher_count_map = {}  # Maps voucher_number -> occurrence count
                 for entry in result.get("entries", []):
                     vouch_no = entry.get("invoice_number") or ""
                     if vouch_no:
-                        if vouch_no in voucher_numbers:
-                            import logging
-                            logging.warning(f"⚠️  Duplicate voucher number found: {vouch_no}")
-                        voucher_numbers.append(vouch_no)
+                        voucher_count_map[vouch_no] = voucher_count_map.get(vouch_no, 0) + 1
                 
-                if len(voucher_numbers) != len(set(voucher_numbers)):
+                # Check if duplicates exist
+                duplicates = {k: v for k, v in voucher_count_map.items() if v > 1}
+                if duplicates:
                     import logging
-                    logging.warning(f"⚠️  Found {len(voucher_numbers) - len(set(voucher_numbers))} duplicate voucher number(s) in register")
+                    logging.info(f"✅ Auto-fixing {len(duplicates)} duplicate voucher number(s): {list(duplicates.keys())}")
+                
+                # Track current occurrence for each voucher number during processing
+                voucher_occurrence_map = {}  # Maps voucher_number -> current occurrence index
                 
                 # Build XML with one TALLYMESSAGE per voucher
                 xml_parts = []
@@ -1402,9 +1434,26 @@ def export_tally_xml(job_id: str, authorization: str = Header(None), x_api_key: 
       <REQUESTDATA>""")
                 
                 for entry in result.get("entries", []):
+                    # Get original voucher number
+                    original_vouch_no = entry.get("invoice_number") or ""
+                    
+                    # Auto-fix duplicate: Generate unique voucher number
+                    unique_vouch_no = original_vouch_no
+                    if original_vouch_no:
+                        if original_vouch_no in duplicates:
+                            # This is a duplicate - append occurrence index (starting from 1)
+                            occurrence = voucher_occurrence_map.get(original_vouch_no, 0) + 1
+                            voucher_occurrence_map[original_vouch_no] = occurrence
+                            unique_vouch_no = f"{original_vouch_no}-{occurrence}"
+                            import logging
+                            logging.info(f"✅ Auto-fixed duplicate voucher: {original_vouch_no} → {unique_vouch_no}")
+                        else:
+                            # Not a duplicate - keep original, but track it
+                            voucher_occurrence_map[original_vouch_no] = 0
+                    
                     # Convert register entry to invoice-like structure for Tally XML
                     invoice_data = {
-                        "invoice_number": entry.get("invoice_number"),
+                        "invoice_number": unique_vouch_no,  # Use auto-fixed unique voucher number
                         "date": entry.get("invoice_date"),
                         "buyer": {
                             "name": entry.get("customer_name") or entry.get("supplier_name") or "",

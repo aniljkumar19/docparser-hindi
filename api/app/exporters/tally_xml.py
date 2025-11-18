@@ -79,6 +79,30 @@ def invoice_to_tally_xml(parsed: Dict[str, Any], voucher_type: str = "Sales", co
         sgst = parsed.get("sgst", 0)
         igst = parsed.get("igst", 0)
     
+    # Auto-fix GST Type Mismatch based on state codes
+    # Rule: If CompanyState == SupplierState → Use CGST + SGST, Else → Use IGST
+    if company_state_code and gstin_raw:
+        supplier_state_code = _extract_state_code(gstin_raw)
+        if supplier_state_code:
+            if company_state_code == supplier_state_code:
+                # Same state - should use CGST + SGST
+                # If IGST is present, convert it to CGST + SGST (split 50/50)
+                if igst > 0:
+                    total_tax = igst
+                    cgst = total_tax / 2.0
+                    sgst = total_tax / 2.0
+                    igst = 0
+                    logging.info(f"✅ Auto-fixed GST: Company state ({company_state_code}) = Supplier state ({supplier_state_code}) → Converted IGST ({total_tax:.2f}) to CGST+SGST ({cgst:.2f}+{sgst:.2f})")
+            else:
+                # Different state - should use IGST
+                # If CGST or SGST are present, convert them to IGST (sum them)
+                if cgst > 0 or sgst > 0:
+                    total_tax = cgst + sgst
+                    igst = total_tax
+                    cgst = 0
+                    sgst = 0
+                    logging.info(f"✅ Auto-fixed GST: Company state ({company_state_code}) ≠ Supplier state ({supplier_state_code}) → Converted CGST+SGST ({total_tax:.2f}) to IGST ({igst:.2f})")
+    
     # Determine voucher type name (default to voucher_type)
     voucher_type_name = voucher_type
     
