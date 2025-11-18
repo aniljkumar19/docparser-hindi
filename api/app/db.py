@@ -8,40 +8,49 @@ import secrets
 
 
 # Railway provides DATABASE_URL automatically, but we also support DB_URL for flexibility
-# IMPORTANT: If neither is set, falls back to SQLite which is EPHEMERAL in containers!
+# REQUIRED: DATABASE_URL or DB_URL must be set - no SQLite fallback!
 DATABASE_URL_ENV = os.getenv("DATABASE_URL")
 DB_URL_ENV = os.getenv("DB_URL")
-DB_URL = DATABASE_URL_ENV or DB_URL_ENV or "sqlite:///./doc.db"
+
+if not DATABASE_URL_ENV and not DB_URL_ENV:
+    import logging
+    logging.error("=" * 60)
+    logging.error("❌ DATABASE CONFIGURATION ERROR")
+    logging.error("   DATABASE_URL or DB_URL environment variable is REQUIRED")
+    logging.error("   Please set DATABASE_URL in Railway to your PostgreSQL database")
+    logging.error("=" * 60)
+    raise ValueError(
+        "DATABASE_URL or DB_URL environment variable is required. "
+        "Please set DATABASE_URL in Railway to connect to your PostgreSQL database."
+    )
+
+DB_URL = DATABASE_URL_ENV or DB_URL_ENV
 
 # Log which database is being used (mask password for security)
 import logging
 if DATABASE_URL_ENV:
     db_source = "DATABASE_URL (Railway)"
-    # Mask password in connection string
-    if "@" in DB_URL and "://" in DB_URL:
-        parts = DB_URL.split("@")
-        if len(parts) == 2:
-            masked_url = parts[0].split("://")[0] + "://***:***@" + parts[1]
-        else:
-            masked_url = DB_URL[:50] + "..."
-    else:
-        masked_url = DB_URL[:50] + "..." if len(DB_URL) > 50 else DB_URL
 elif DB_URL_ENV:
     db_source = "DB_URL (custom)"
-    masked_url = DB_URL[:50] + "..." if len(DB_URL) > 50 else DB_URL
+
+# Mask password in connection string
+if "@" in DB_URL and "://" in DB_URL:
+    parts = DB_URL.split("@")
+    if len(parts) == 2:
+        masked_url = parts[0].split("://")[0] + "://***:***@" + parts[1]
+    else:
+        masked_url = DB_URL[:50] + "..."
 else:
-    db_source = "FALLBACK (SQLite - EPHEMERAL!)"
-    masked_url = DB_URL
+    masked_url = DB_URL[:50] + "..." if len(DB_URL) > 50 else DB_URL
 
 logging.warning("=" * 60)
 logging.warning(f"🔍 DATABASE CONFIGURATION")
 logging.warning(f"   Source: {db_source}")
 logging.warning(f"   URL: {masked_url}")
-if DB_URL.startswith("sqlite"):
-    logging.error("   ⚠️  WARNING: Using SQLite - data will be LOST on container restart!")
-    logging.error("   ⚠️  Set DATABASE_URL or DB_URL environment variable to use PostgreSQL")
-else:
+if DB_URL.startswith("postgresql") or DB_URL.startswith("postgres"):
     logging.info(f"   ✅ Using PostgreSQL (persistent)")
+else:
+    logging.warning(f"   ⚠️  Using non-standard database type: {DB_URL.split('://')[0] if '://' in DB_URL else 'unknown'}")
 logging.warning("=" * 60)
 
 # Schema name for DocParser tables (isolates from other apps in same database)
