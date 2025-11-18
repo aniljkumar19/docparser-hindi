@@ -79,36 +79,64 @@ def create_new_api_key(
     The api_key in the response is the ONLY time it will be shown.
     Save it immediately!
     """
-    # Generate API key
-    raw_key = generate_api_key()
-    key_hash = hash_api_key(raw_key)
-    
-    # Check for hash collision (very unlikely)
-    existing = db.query(ApiKey).filter(ApiKey.key_hash == key_hash).first()
-    if existing:
-        raise HTTPException(status_code=500, detail="Key collision (retry)")
-    
-    # Create database record
-    api_key = ApiKey(
-        key_hash=key_hash,
-        tenant_id=tenant_id or "default",
-        name=name,
-        is_active="active",
-        rate_limit_per_minute=60,
-        rate_limit_per_hour=1000,
-        created_by="admin"
-    )
-    db.add(api_key)
-    db.commit()
-    db.refresh(api_key)
-    
-    return CreateApiKeyResponse(
-        id=api_key.id,
-        name=api_key.name or name,
-        api_key=raw_key,  # Only time this is returned!
-        active=api_key.is_active == "active",
-        created_at=api_key.created_at.isoformat() if api_key.created_at else "",
-    )
+    import logging
+    try:
+        # Generate API key
+        raw_key = generate_api_key()
+        key_hash = hash_api_key(raw_key)
+        
+        # Check for hash collision (very unlikely)
+        existing = db.query(ApiKey).filter(ApiKey.key_hash == key_hash).first()
+        if existing:
+            raise HTTPException(status_code=500, detail="Key collision (retry)")
+        
+        # Create database record
+        api_key = ApiKey(
+            key_hash=key_hash,
+            tenant_id=tenant_id or "default",
+            name=name,
+            is_active="active",
+            rate_limit_per_minute=60,
+            rate_limit_per_hour=1000,
+            created_by="admin"
+        )
+        db.add(api_key)
+        db.commit()
+        db.refresh(api_key)
+        
+        # Format created_at safely
+        created_at_str = ""
+        if api_key.created_at:
+            try:
+                if hasattr(api_key.created_at, 'isoformat'):
+                    created_at_str = api_key.created_at.isoformat()
+                else:
+                    created_at_str = str(api_key.created_at)
+            except Exception as e:
+                logging.warning(f"Error formatting created_at: {e}")
+                created_at_str = ""
+        
+        response = CreateApiKeyResponse(
+            id=api_key.id,
+            name=api_key.name or name,
+            api_key=raw_key,  # Only time this is returned!
+            active=api_key.is_active == "active",
+            created_at=created_at_str,
+        )
+        
+        logging.info(f"Created API key: {api_key.id} for tenant: {api_key.tenant_id}")
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        logging.error(f"Error creating API key: {e}\n{traceback.format_exc()}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create API key: {str(e)}"
+        )
 
 @router.get("", summary="List all API keys (admin only)")
 def list_all_api_keys(
