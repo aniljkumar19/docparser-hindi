@@ -53,7 +53,12 @@ def verify_api_key(authorization: str | None, x_api_key: str | None) -> tuple[st
     This is the backward-compatible function used by existing endpoints.
     For new code, use the middleware which provides request.state.tenant_id.
     """
+    import logging
     key = _extract_key(authorization, x_api_key)
+    
+    # Log the key being verified (first 8 chars only for security)
+    key_preview = key[:8] + "..." if len(key) > 8 else key
+    logging.info(f"Verifying API key: {key_preview} (length: {len(key)})")
     
     # First, try database lookup (new method)
     key_hash = hash_api_key(key)
@@ -67,10 +72,14 @@ def verify_api_key(authorization: str | None, x_api_key: str | None) -> tuple[st
             from datetime import datetime, timezone
             api_key_obj.last_used_at = datetime.now(timezone.utc)
             db.commit()
+            logging.info(f"✅ API key verified from database (tenant: {api_key_obj.tenant_id})")
             return key, api_key_obj.tenant_id
     
     # Fallback to legacy env var method (for backward compatibility)
+    logging.info(f"Database lookup failed, checking env vars. Available keys: {list(API_KEY_TENANTS.keys())}")
     tenant_id = API_KEY_TENANTS.get(key)
     if not tenant_id:
+        logging.warning(f"❌ API key not found in database or env vars: {key_preview}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+    logging.info(f"✅ API key verified from env vars (tenant: {tenant_id})")
     return key, tenant_id

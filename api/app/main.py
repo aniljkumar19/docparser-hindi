@@ -787,19 +787,92 @@ def debug_job(job_id: str, authorization: str | None = Header(None), x_api_key: 
 @app.get("/debug/api-keys")
 def debug_api_keys():
     """Debug endpoint to check API keys configuration"""
-    from .security import API_KEY_TENANTS, _load_key_map
+    from .security import API_KEY_TENANTS, _load_key_map, hash_api_key
+    from .db import SessionLocal, ApiKey
     env_keys = os.getenv("API_KEYS", "")
     reloaded = _load_key_map()
     admin_token = os.getenv("ADMIN_TOKEN", "")
+    
+    # Check database keys
+    db_keys = []
+    with SessionLocal() as db:
+        db_key_objs = db.query(ApiKey).all()
+        for k in db_key_objs:
+            db_keys.append({
+                "id": k.id,
+                "name": k.name,
+                "tenant_id": k.tenant_id,
+                "is_active": k.is_active,
+                "created_at": str(k.created_at) if k.created_at else None,
+            })
+    
+    # Test hash for dev_123
+    dev_123_hash = hash_api_key("dev_123")
+    dev_123_in_db = False
+    with SessionLocal() as db:
+        dev_123_obj = db.query(ApiKey).filter(ApiKey.key_hash == dev_123_hash).first()
+        dev_123_in_db = dev_123_obj is not None
+    
     return {
         "env_API_KEYS": env_keys,
         "loaded_keys": list(API_KEY_TENANTS.keys()),
         "reloaded_keys": list(reloaded.keys()),
         "key_count": len(API_KEY_TENANTS),
         "ADMIN_TOKEN_configured": bool(admin_token),
+        "database_keys": db_keys,
+        "database_key_count": len(db_keys),
+        "dev_123_in_env": "dev_123" in API_KEY_TENANTS,
+        "dev_123_in_database": dev_123_in_db,
         "ADMIN_TOKEN_length": len(admin_token) if admin_token else 0,
         "ADMIN_TOKEN_preview": admin_token[:4] + "..." if admin_token and len(admin_token) > 4 else "not set"
     }
+
+@app.post("/debug/test-api-key")
+def test_api_key(authorization: str | None = Header(None), x_api_key: str | None = Header(None, alias="x-api-key")):
+    """Test endpoint to verify API key extraction and validation"""
+    import logging
+    from .security import _extract_key, hash_api_key, API_KEY_TENANTS
+    from .db import SessionLocal, ApiKey
+    
+    try:
+        key = _extract_key(authorization, x_api_key)
+        key_preview = key[:8] + "..." if len(key) > 8 else key
+        key_hash = hash_api_key(key)
+        
+        # Check database
+        db_match = None
+        with SessionLocal() as db:
+            api_key_obj = db.query(ApiKey).filter(
+                ApiKey.key_hash == key_hash,
+                ApiKey.is_active == "active"
+            ).first()
+            if api_key_obj:
+                db_match = {
+                    "id": api_key_obj.id,
+                    "name": api_key_obj.name,
+                    "tenant_id": api_key_obj.tenant_id,
+                    "is_active": api_key_obj.is_active,
+                }
+        
+        # Check env vars
+        env_match = API_KEY_TENANTS.get(key)
+        
+        return {
+            "key_received": key_preview,
+            "key_length": len(key),
+            "key_hash": key_hash[:16] + "...",
+            "database_match": db_match,
+            "env_var_match": env_match,
+            "authorization_header": authorization[:20] + "..." if authorization and len(authorization) > 20 else authorization,
+            "x_api_key_header": x_api_key[:8] + "..." if x_api_key and len(x_api_key) > 8 else x_api_key,
+            "valid": bool(db_match or env_match),
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "authorization_header": authorization[:20] + "..." if authorization and len(authorization) > 20 else authorization,
+            "x_api_key_header": x_api_key[:8] + "..." if x_api_key and len(x_api_key) > 8 else x_api_key,
+        }
 
 # app/main.py
 @app.post("/v1/parse", response_model=JobResponse)
