@@ -1420,6 +1420,18 @@ def export_tally_xml(job_id: str, authorization: str = Header(None), x_api_key: 
                 # Single invoice
                 xml = invoice_to_tally_xml(result)
             
+            # Validate XML syntax before returning
+            try:
+                import xml.etree.ElementTree as ET
+                ET.fromstring(xml)
+                logging.info("✅ XML syntax validation passed")
+            except ET.ParseError as e:
+                logging.error(f"❌ XML syntax error: {e}")
+                logging.error(f"   XML preview (first 500 chars): {xml[:500]}")
+                # Still return XML but log the error
+            except Exception as e:
+                logging.warning(f"⚠️  Could not validate XML syntax: {e}")
+            
             return JSONResponse(content={"filename": f"{job_id}.xml", "content": xml})
     except HTTPException:
         raise

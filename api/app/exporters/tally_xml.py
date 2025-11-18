@@ -1,6 +1,7 @@
 from typing import Dict, Any
 from xml.sax.saxutils import escape
 import logging
+import xml.etree.ElementTree as ET
 
 def _format_tally_date(date_str: str) -> str:
     """Convert date from YYYY-MM-DD to YYYYMMDD format for Tally"""
@@ -195,6 +196,37 @@ def invoice_to_tally_xml(parsed: Dict[str, Any], voucher_type: str = "Sales") ->
         logging.warning(f"⚠️  Item total ({item_total:.2f}) doesn't match taxable value ({taxable_value:.2f})")
     if abs(expected_total - total) > 0.01:
         logging.warning(f"⚠️  Expected total ({expected_total:.2f}) doesn't match actual total ({total:.2f})")
+    
+    # GST Consistency Checks
+    if taxable_value > 0:
+        # Check CGST percentage (should be ~9% for 18% GST split)
+        if cgst > 0:
+            cgst_percent = (cgst / taxable_value) * 100
+            if abs(cgst_percent - 9.0) > 0.5:  # Allow 0.5% tolerance
+                logging.warning(f"⚠️  CGST percentage is {cgst_percent:.2f}% (expected ~9% for 18% GST split)")
+        
+        # Check SGST percentage (should be ~9% for 18% GST split)
+        if sgst > 0:
+            sgst_percent = (sgst / taxable_value) * 100
+            if abs(sgst_percent - 9.0) > 0.5:  # Allow 0.5% tolerance
+                logging.warning(f"⚠️  SGST percentage is {sgst_percent:.2f}% (expected ~9% for 18% GST split)")
+        
+        # Check IGST percentage (should be ~18% if using IGST)
+        if igst > 0:
+            igst_percent = (igst / taxable_value) * 100
+            if abs(igst_percent - 18.0) > 0.5:  # Allow 0.5% tolerance
+                logging.warning(f"⚠️  IGST percentage is {igst_percent:.2f}% (expected ~18%)")
+        
+        # Check if both CGST+SGST and IGST are present (shouldn't happen)
+        if (cgst > 0 or sgst > 0) and igst > 0:
+            logging.warning(f"⚠️  Both CGST/SGST ({cgst:.2f}/{sgst:.2f}) and IGST ({igst:.2f}) are present - should use one or the other")
+        
+        # Validate base + tax = total
+        calculated_total = taxable_value + cgst + sgst + igst
+        if abs(calculated_total - total) > 0.01:
+            logging.warning(f"⚠️  Base ({taxable_value:.2f}) + Tax ({cgst + sgst + igst:.2f}) = {calculated_total:.2f}, but total is {total:.2f}")
+        else:
+            logging.info(f"✅ GST validation passed: Base ({taxable_value:.2f}) + Tax ({cgst + sgst + igst:.2f}) = Total ({total:.2f})")
     
     body = f"""<ENVELOPE>
   <HEADER>
