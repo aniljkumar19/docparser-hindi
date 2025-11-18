@@ -1,0 +1,14 @@
+# Pre-commit hook configuration
+# Install with: pre-commit install
+
+repos:
+  - repo: local
+    hooks:
+      - id: pytest-tally
+        name: Run Tally XML tests
+        entry: pytest tests/test_tally_xml_gst_autofix.py tests/test_tally_xml_structure.py -v
+        language: system
+        pass_filenames: false
+        always_run: false
+        stages: [commit]
+

@@ -7,10 +7,15 @@ This directory contains all test scripts and fixtures for validating DocParser f
 ```
 tests/
 ├── README.md                          # This file
-├── test_gst_auto_fix.py               # GST auto-fix validation tests
-├── show_xml_output.py                 # Visual XML output viewer
+├── conftest.py                        # Pytest configuration (imports setup)
+├── pytest.ini                         # Pytest settings
+├── test_tally_xml_gst_autofix.py      # ✅ Pytest: GST auto-fix regression tests
+├── test_tally_xml_structure.py        # ✅ Pytest: XML structure validation tests
+├── test_gst_auto_fix.py               # Legacy: Manual GST auto-fix tests
+├── show_xml_output.py                 # Legacy: Visual XML output viewer
 ├── test_db_connection.py              # Database connection tests
 ├── test_bulk_processing.py            # Bulk processing tests
+├── run_tally_tests.sh                # Quick test runner script
 └── fixtures/                          # Test data files
     ├── purchase_same_state.json       # Sample: Same state purchase (should use CGST+SGST)
     ├── purchase_different_state.json  # Sample: Different state purchase (should use IGST)
@@ -19,9 +24,31 @@ tests/
 
 ## Running Tests
 
-### GST Auto-Fix Tests (Tally Export)
+### Pytest Tests (Recommended - Regression Tests)
 
-**Main test suite:**
+**Run all Tally XML tests:**
+```bash
+# From project root
+pytest tests/test_tally_xml_*.py -v
+
+# Or from tests directory
+cd tests && pytest test_tally_xml_*.py -v
+```
+
+**Run specific test file:**
+```bash
+pytest tests/test_tally_xml_gst_autofix.py -v
+pytest tests/test_tally_xml_structure.py -v
+```
+
+**Run with coverage:**
+```bash
+pytest tests/test_tally_xml_*.py --cov=app.exporters.tally_xml --cov-report=term
+```
+
+### Manual Test Scripts (Legacy)
+
+**GST Auto-Fix Tests:**
 ```bash
 cd tests
 python3 test_gst_auto_fix.py
@@ -85,20 +112,29 @@ cd tests && python3 test_gst_auto_fix.py && echo "✅ All tests passed!"
 
 ## Test Coverage
 
-### GST Auto-Fix Logic
+### Pytest Tests (test_tally_xml_gst_autofix.py)
 - [x] Same state → CGST+SGST conversion
 - [x] Different state → IGST conversion
 - [x] Tax amount accuracy (splitting/summing)
 - [x] Voucher number uniqueness
-- [x] XML structure validation
+- [x] IGST to CGST+SGST amount validation (50/50 split)
+- [x] CGST+SGST to IGST amount validation (sum)
+
+### Pytest Tests (test_tally_xml_structure.py)
+- [x] Required tags validation (VCHTYPE, VOUCHERTYPENAME, DATE, etc.)
+- [x] Recommended tags check (EFFECTIVEDATE, PARTYGSTIN, ISINVOICE)
+- [x] Voucher balancing (debits = credits)
+- [x] XML syntax validation
+- [x] Date format validation (YYYYMMDD)
+- [x] VCHTYPE validation (Purchase vs Sales)
+- [x] Sign convention validation (debits positive, credits negative)
 
 ### Future Test Additions
-- [ ] Duplicate voucher number auto-fix
-- [ ] Ledger balancing validation
-- [ ] Sign convention validation
-- [ ] Required/recommended tag validation
+- [ ] Duplicate voucher number auto-fix (for register documents)
 - [ ] Stock item name normalization
-- [ ] Date format validation
+- [ ] Multiple line items handling
+- [ ] Discount handling
+- [ ] Round-off amount handling
 
 ## Notes
 
