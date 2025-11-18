@@ -863,6 +863,48 @@ def debug_api_keys():
         "ADMIN_TOKEN_preview": admin_token[:4] + "..." if admin_token and len(admin_token) > 4 else "not set"
     }
 
+@app.get("/debug/recent-api-keys")
+def debug_recent_api_keys(limit: int = 5):
+    """Check the most recently created API keys in the database"""
+    from .db import SessionLocal, ApiKey
+    import logging
+    
+    try:
+        with SessionLocal() as db:
+            # Get most recent keys ordered by created_at
+            recent_keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).limit(limit).all()
+            
+            keys_info = []
+            for k in recent_keys:
+                keys_info.append({
+                    "id": k.id,
+                    "name": k.name,
+                    "tenant_id": k.tenant_id,
+                    "is_active": k.is_active,
+                    "created_at": str(k.created_at) if k.created_at else None,
+                    "created_by": k.created_by,
+                    "last_used_at": str(k.last_used_at) if k.last_used_at else "Never",
+                    "hash_preview": k.key_hash[:16] + "..." if k.key_hash else None,
+                })
+            
+            logging.info(f"Found {len(recent_keys)} recent API keys in database")
+            
+            return {
+                "success": True,
+                "total_found": len(recent_keys),
+                "recent_keys": keys_info,
+                "message": f"Found {len(recent_keys)} API key(s) in database" if recent_keys else "No API keys found in database"
+            }
+    except Exception as e:
+        import traceback
+        logging.error(f"Error checking recent API keys: {e}")
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 @app.post("/debug/test-api-key")
 def test_api_key(authorization: str | None = Header(None), x_api_key: str | None = Header(None, alias="x-api-key")):
     """Test endpoint to verify API key extraction and validation"""
