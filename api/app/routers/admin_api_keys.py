@@ -102,18 +102,35 @@ def create_new_api_key(
         )
         db.add(api_key)
         
+        # Log database info before commit
+        from ..db import DB_URL, TABLE_SCHEMA
+        db_preview = DB_URL[:50] + "..." if len(DB_URL) > 50 else DB_URL
+        logging.info(f"Saving API key to database: {db_preview}")
+        logging.info(f"Using schema: {TABLE_SCHEMA if TABLE_SCHEMA else 'None (no schema)'}")
+        
         # Commit and verify it was saved
         try:
             db.commit()
             db.refresh(api_key)
             
-            # Verify the key was actually saved
-            verify_key = db.query(ApiKey).filter(ApiKey.id == api_key.id).first()
-            if not verify_key:
-                logging.error(f"❌ CRITICAL: API key {api_key.id} was not saved to database after commit!")
-                raise HTTPException(status_code=500, detail="Failed to save API key to database")
+            # Verify the key was actually saved (use a fresh query to ensure we're reading from DB)
+            # Close current session and create new one to avoid cache issues
+            db.close()
+            with SessionLocal() as verify_db:
+                verify_key = verify_db.query(ApiKey).filter(ApiKey.id == api_key.id).first()
+                if not verify_key:
+                    logging.error(f"❌ CRITICAL: API key {api_key.id} was not saved to database after commit!")
+                    logging.error(f"   Database: {db_preview}")
+                    logging.error(f"   Schema: {TABLE_SCHEMA if TABLE_SCHEMA else 'None'}")
+                    raise HTTPException(status_code=500, detail="Failed to save API key to database")
+                
+                logging.info(f"✅ Verified API key {api_key.id} was saved to database")
+                logging.info(f"   Key name: {api_key.name}, Tenant: {api_key.tenant_id}")
+                logging.info(f"   Schema: {TABLE_SCHEMA if TABLE_SCHEMA else 'None'}")
             
-            logging.info(f"✅ Verified API key {api_key.id} was saved to database")
+            # Re-open session for response formatting
+            db = SessionLocal()
+            api_key = db.query(ApiKey).filter(ApiKey.id == api_key.id).first()
         except Exception as commit_error:
             db.rollback()
             logging.error(f"❌ Failed to commit API key: {commit_error}")
@@ -162,6 +179,12 @@ def list_all_api_keys(
 ):
     """List all API keys (admin only). Keys are NOT shown for security."""
     import logging
+    from ..db import DB_URL, TABLE_SCHEMA
+    
+    # Log database connection info
+    db_preview = DB_URL[:50] + "..." if len(DB_URL) > 50 else DB_URL
+    logging.info(f"Admin listing API keys from database: {db_preview}")
+    logging.info(f"Using schema: {TABLE_SCHEMA if TABLE_SCHEMA else 'None (no schema)'}")
     
     # Get all keys (including inactive)
     all_keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
@@ -169,9 +192,22 @@ def list_all_api_keys(
     
     logging.info(f"Admin listing API keys: {len(all_keys)} total, {len(active_keys)} active")
     
+    # If no keys, check if table exists
     if len(all_keys) == 0:
         logging.warning("⚠️  No API keys found in database at all!")
-        # Return empty array with a message in response headers
+        # Check if we can query the table at all (to verify it exists)
+        try:
+            from sqlalchemy import inspect
+            inspector = inspect(db.bind)
+            tables = inspector.get_table_names(schema=TABLE_SCHEMA if TABLE_SCHEMA else None)
+            logging.warning(f"Available tables in schema: {tables}")
+            if "api_keys" not in tables:
+                logging.error("❌ api_keys table does NOT exist in database!")
+            else:
+                logging.warning("⚠️  api_keys table exists but is empty")
+        except Exception as e:
+            logging.error(f"Could not inspect database: {e}")
+        # Return empty array
         return []
     
     result = [
