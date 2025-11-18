@@ -769,11 +769,15 @@ def debug_api_keys():
     from .security import API_KEY_TENANTS, _load_key_map
     env_keys = os.getenv("API_KEYS", "")
     reloaded = _load_key_map()
+    admin_token = os.getenv("ADMIN_TOKEN", "")
     return {
         "env_API_KEYS": env_keys,
         "loaded_keys": list(API_KEY_TENANTS.keys()),
         "reloaded_keys": list(reloaded.keys()),
-        "key_count": len(API_KEY_TENANTS)
+        "key_count": len(API_KEY_TENANTS),
+        "ADMIN_TOKEN_configured": bool(admin_token),
+        "ADMIN_TOKEN_length": len(admin_token) if admin_token else 0,
+        "ADMIN_TOKEN_preview": admin_token[:4] + "..." if admin_token and len(admin_token) > 4 else "not set"
     }
 
 # app/main.py
