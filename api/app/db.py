@@ -89,6 +89,11 @@ class ApiKey(Base):
 
 def init_db():
     """Initialize database: create schema if needed, then create tables."""
+    import logging
+    logging.info("=== Initializing Database ===")
+    logging.info(f"Database URL: {DB_URL[:50]}..." if len(DB_URL) > 50 else f"Database URL: {DB_URL}")
+    logging.info(f"Using schema: {TABLE_SCHEMA if TABLE_SCHEMA else 'None (no schema)'}")
+    
     # Only create schema for PostgreSQL (not SQLite)
     if USE_SCHEMA:
         try:
@@ -96,11 +101,30 @@ def init_db():
                 # Create schema if it doesn't exist (idempotent)
                 conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {DOCPARSER_SCHEMA}"))
                 conn.commit()
+                logging.info(f"✅ Schema '{DOCPARSER_SCHEMA}' ready")
         except Exception as e:
-            import logging
-            logging.warning(f"Could not create schema {DOCPARSER_SCHEMA}: {e}")
+            logging.warning(f"⚠️  Could not create schema {DOCPARSER_SCHEMA}: {e}")
 
-    Base.metadata.create_all(bind=engine)
+    # Create all tables
+    try:
+        Base.metadata.create_all(bind=engine)
+        logging.info("✅ Database tables created/verified")
+        
+        # Verify api_keys table exists
+        from sqlalchemy import inspect
+        inspector = inspect(engine)
+        tables = inspector.get_table_names(schema=TABLE_SCHEMA if TABLE_SCHEMA else None)
+        if "api_keys" in tables:
+            logging.info("✅ api_keys table exists")
+        else:
+            logging.error(f"❌ api_keys table NOT found! Available tables: {tables}")
+    except Exception as e:
+        logging.error(f"❌ Failed to create database tables: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        raise
+    
+    logging.info("=== Database Initialization Complete ===")
 
 def create_job(
     db,

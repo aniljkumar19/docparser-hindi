@@ -101,8 +101,25 @@ def create_new_api_key(
             created_by="admin"
         )
         db.add(api_key)
-        db.commit()
-        db.refresh(api_key)
+        
+        # Commit and verify it was saved
+        try:
+            db.commit()
+            db.refresh(api_key)
+            
+            # Verify the key was actually saved
+            verify_key = db.query(ApiKey).filter(ApiKey.id == api_key.id).first()
+            if not verify_key:
+                logging.error(f"❌ CRITICAL: API key {api_key.id} was not saved to database after commit!")
+                raise HTTPException(status_code=500, detail="Failed to save API key to database")
+            
+            logging.info(f"✅ Verified API key {api_key.id} was saved to database")
+        except Exception as commit_error:
+            db.rollback()
+            logging.error(f"❌ Failed to commit API key: {commit_error}")
+            import traceback
+            logging.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=f"Database error: {str(commit_error)}")
         
         # Format created_at safely
         created_at_str = ""
