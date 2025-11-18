@@ -47,6 +47,9 @@ from .storage import save_file_to_s3, get_object_key, ensure_bucket
 # Import API key management endpoints
 from .api_keys import router as api_keys_router
 
+# Import admin API key endpoints
+from .routers.admin_api_keys import router as admin_api_keys_router
+
 # ...
 # Initialize database (with error handling)
 try:
@@ -70,6 +73,9 @@ app = FastAPI(title="Doc Parser API PRO", version="0.2.0")
 
 # Include API key management router
 app.include_router(api_keys_router)
+
+# Include admin API key router (protected by ADMIN_TOKEN)
+app.include_router(admin_api_keys_router)
 
 # CORS origins - configurable via environment variable
 # Format: comma-separated list of origins, e.g., "http://localhost:3000,https://yourdomain.com"
@@ -545,8 +551,14 @@ def root():
                   <h4>How to start</h4>
                   <p>
                     Send a <code>POST /v1/parse</code> request with your document as
-                    <code>file</code> (multipart) and your API key in the
-                    <code>Authorization</code> or <code>X-API-Key</code> header.
+                    <code>file</code> (multipart) and your API key in the header.
+                    Include your API key in either:
+                  </p>
+                  <ul style="margin: 8px 0; padding-left: 20px; color: var(--muted); font-size: 11px;">
+                    <li><code>Authorization: Bearer &lt;YOUR_API_KEY&gt;</code></li>
+                    <li><code>X-API-Key: &lt;YOUR_API_KEY&gt;</code></li>
+                  </ul>
+                  <p style="margin-top: 8px; font-size: 11px; color: var(--muted);">
                     We create a job and return a <code>job_id</code> you can poll.
                   </p>
                 </div>
