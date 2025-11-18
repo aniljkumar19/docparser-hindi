@@ -848,9 +848,11 @@ def test_api_key(authorization: str | None = Header(None), x_api_key: str | None
         key_preview = key[:8] + "..." if len(key) > 8 else key
         key_hash = hash_api_key(key)
         
-        # Check database
+        # Check database - get all keys for comparison
         db_match = None
+        all_db_keys = []
         with SessionLocal() as db:
+            # Get the matching key
             api_key_obj = db.query(ApiKey).filter(
                 ApiKey.key_hash == key_hash,
                 ApiKey.is_active == "active"
@@ -862,6 +864,16 @@ def test_api_key(authorization: str | None = Header(None), x_api_key: str | None
                     "tenant_id": api_key_obj.tenant_id,
                     "is_active": api_key_obj.is_active,
                 }
+            
+            # Get all active keys for comparison
+            all_keys = db.query(ApiKey).filter(ApiKey.is_active == "active").all()
+            for k in all_keys:
+                all_db_keys.append({
+                    "id": k.id,
+                    "name": k.name,
+                    "hash_preview": k.key_hash[:16] + "...",
+                    "tenant_id": k.tenant_id,
+                })
         
         # Check env vars
         env_match = API_KEY_TENANTS.get(key)
@@ -869,18 +881,22 @@ def test_api_key(authorization: str | None = Header(None), x_api_key: str | None
         return {
             "key_received": key_preview,
             "key_length": len(key),
+            "key_starts_with": key[:10] if len(key) >= 10 else key,
             "key_hash": key_hash[:16] + "...",
             "database_match": db_match,
+            "all_database_keys": all_db_keys,
             "env_var_match": env_match,
-            "authorization_header": authorization[:20] + "..." if authorization and len(authorization) > 20 else authorization,
-            "x_api_key_header": x_api_key[:8] + "..." if x_api_key and len(x_api_key) > 8 else x_api_key,
+            "authorization_header": authorization[:30] + "..." if authorization and len(authorization) > 30 else authorization,
+            "x_api_key_header": x_api_key[:20] + "..." if x_api_key and len(x_api_key) > 20 else x_api_key,
             "valid": bool(db_match or env_match),
         }
     except Exception as e:
+        import traceback
         return {
             "error": str(e),
-            "authorization_header": authorization[:20] + "..." if authorization and len(authorization) > 20 else authorization,
-            "x_api_key_header": x_api_key[:8] + "..." if x_api_key and len(x_api_key) > 8 else x_api_key,
+            "traceback": traceback.format_exc(),
+            "authorization_header": authorization[:30] + "..." if authorization and len(authorization) > 30 else authorization,
+            "x_api_key_header": x_api_key[:20] + "..." if x_api_key and len(x_api_key) > 20 else x_api_key,
         }
 
 # app/main.py

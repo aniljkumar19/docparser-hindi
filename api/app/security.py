@@ -73,18 +73,34 @@ def verify_api_key(authorization: str | None, x_api_key: str | None) -> tuple[st
     
     # First, try database lookup (new method)
     key_hash = hash_api_key(key)
+    logging.info(f"Key hash (first 16 chars): {key_hash[:16]}...")
+    
     with SessionLocal() as db:
+        # First, check all active keys to see if any match
+        all_active_keys = db.query(ApiKey).filter(ApiKey.is_active == "active").all()
+        logging.info(f"Found {len(all_active_keys)} active API keys in database")
+        
+        # Try exact hash match
         api_key_obj = db.query(ApiKey).filter(
             ApiKey.key_hash == key_hash,
             ApiKey.is_active == "active"
         ).first()
+        
         if api_key_obj:
             # Update last_used_at
             from datetime import datetime, timezone
             api_key_obj.last_used_at = datetime.now(timezone.utc)
             db.commit()
-            logging.info(f"✅ API key verified from database (tenant: {api_key_obj.tenant_id})")
+            logging.info(f"✅ API key verified from database (tenant: {api_key_obj.tenant_id}, name: {api_key_obj.name})")
             return key, api_key_obj.tenant_id
+        else:
+            # Log what we found for debugging
+            logging.warning(f"❌ No matching API key found in database")
+            logging.warning(f"   Searched hash: {key_hash[:16]}...")
+            logging.warning(f"   Active keys in DB: {len(all_active_keys)}")
+            if all_active_keys:
+                for k in all_active_keys[:3]:  # Show first 3 for debugging
+                    logging.warning(f"   - Key ID: {k.id}, Name: {k.name}, Hash: {k.key_hash[:16]}..., Active: {k.is_active}")
     
     # Fallback to legacy env var method (for backward compatibility)
     logging.info(f"Database lookup failed, checking env vars. Available keys: {list(API_KEY_TENANTS.keys())}")
