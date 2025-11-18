@@ -107,18 +107,28 @@ if USE_API_KEY_MIDDLEWARE:
     app.add_middleware(ApiKeyAuthMiddleware)
 
 # Redis connection - make it optional
-redis_url = os.getenv("REDIS_URL", "")
-try:
-    if redis_url:
-        redis = Redis.from_url(redis_url)
-        q = Queue("docparser-queue", connection=redis)
+# Only connect if REDIS_URL is explicitly set AND not pointing to localhost (which won't work in Railway)
+redis_url = os.getenv("REDIS_URL", "").strip()
+redis = None
+q = None
+
+if redis_url:
+    # Skip if it's a localhost URL (won't work in Railway without a Redis service)
+    if redis_url.startswith("redis://localhost") or redis_url.startswith("redis://127.0.0.1"):
+        print(f"Warning: REDIS_URL points to localhost ({redis_url}), skipping Redis connection. Jobs will process synchronously.")
     else:
-        redis = None
-        q = None
-except Exception as e:
-    print(f"Warning: Redis connection failed: {e}")
-    redis = None
-    q = None
+        try:
+            redis = Redis.from_url(redis_url, socket_connect_timeout=2, socket_timeout=2)
+            # Test connection
+            redis.ping()
+            q = Queue("docparser-queue", connection=redis)
+            print(f"✅ Redis connected: {redis_url}")
+        except Exception as e:
+            print(f"⚠️  Warning: Redis connection failed ({e}). Jobs will process synchronously.")
+            redis = None
+            q = None
+else:
+    print("ℹ️  REDIS_URL not set. Jobs will process synchronously (no background queue).")
 
 # init_db() already called above with error handling
 
