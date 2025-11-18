@@ -58,6 +58,17 @@ except Exception as e:
     import logging
     logging.error(f"Database initialization failed: {e}")
     # Don't crash on startup - let it fail on first request if needed
+
+# Log environment variable status on startup
+import logging
+logging.info("=== Environment Variables Check ===")
+admin_token = os.getenv("ADMIN_TOKEN")
+logging.info(f"ADMIN_TOKEN configured: {bool(admin_token)}")
+logging.info(f"ADMIN_TOKEN length: {len(admin_token) if admin_token else 0}")
+# List all env vars that contain 'ADMIN' (case insensitive)
+admin_vars = [k for k in os.environ.keys() if 'ADMIN' in k.upper()]
+logging.info(f"Environment variables with 'ADMIN': {admin_vars}")
+logging.info("===================================")
 # Initialize S3/MinIO bucket (with error handling)
 try:
     ensure_bucket()
