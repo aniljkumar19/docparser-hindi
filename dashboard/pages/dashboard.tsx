@@ -457,21 +457,49 @@ export default function Dashboard() {
     else if (kind === "tally-xml") path = `/v1/export/tally-xml/${selectedJob.job_id}`;
     else if (kind === "tally-csv") path = `/v1/export/tally-csv/${selectedJob.job_id}`;
     
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      alert("No API key found. Please log in with an API key first.");
+      return;
+    }
+    
+    console.log(`Exporting ${kind} for job ${selectedJob.job_id}...`);
+    console.log(`URL: ${apiBase}${path}`);
+    
     try {
       const r = await fetch(`${apiBase}${path}`, {
         headers: {
-          "Authorization": `Bearer ${getApiKey()}`
+          "Authorization": `Bearer ${apiKey}`
         },
       });
       
+      console.log(`Response status: ${r.status} ${r.statusText}`);
+      
       if (!r.ok) {
-        console.error("Export failed", r.status, await r.text());
+        const errorText = await r.text();
+        console.error("Export failed", r.status, errorText);
+        let errorMsg = `Export failed: ${r.status}`;
+        if (r.status === 401) {
+          errorMsg = "Authentication failed. Please check your API key.";
+        } else if (r.status === 404) {
+          errorMsg = "Job not found or not completed yet.";
+        } else if (r.status === 500) {
+          errorMsg = "Server error. Please try again later.";
+        }
+        alert(errorMsg);
         return;
       }
       
       const data = await r.json();
+      console.log("Export response:", data);
+      
       const filename = data.filename || `${selectedJob.job_id}.txt`;
       const content = data.content || "";
+      
+      if (!content) {
+        alert("Export returned empty content. The file may not be ready yet.");
+        return;
+      }
       
       // Determine MIME type based on export kind
       let mimeType = "text/plain;charset=utf-8";
@@ -492,8 +520,11 @@ export default function Dashboard() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+      
+      console.log(`Downloaded ${filename} successfully`);
     } catch (e) {
       console.error("Export error", e);
+      alert(`Export failed: ${e instanceof Error ? e.message : "Unknown error"}. Check browser console for details.`);
     }
   }
 

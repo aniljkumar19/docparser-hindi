@@ -1248,7 +1248,60 @@ def export_tally_csv(job_id: str, authorization: str = Header(None)):
         job = get_job_by_id(dbs, job_id)
         if not job or job.status != "succeeded" or not job.result:
             raise HTTPException(status_code=404, detail="job not found or not succeeded")
-        csv_data = invoice_to_tally_csv(job.result)
+        
+        result = job.result
+        if isinstance(result, str):
+            import json
+            result = json.loads(result)
+        
+        # Check if this is a register (has entries array)
+        if isinstance(result, dict) and "entries" in result:
+            # Register document - process all entries
+            import csv
+            from io import StringIO
+            buf = StringIO()
+            w = csv.writer(buf)
+            w.writerow(["Date","Invoice Number","Party Name","GSTIN","Item","Qty","Rate","Amount","CGST","SGST","IGST","Total"])
+            
+            for entry in result.get("entries", []):
+                # Convert register entry to invoice-like structure for Tally CSV
+                invoice_data = {
+                    "invoice_number": entry.get("invoice_number"),
+                    "date": entry.get("invoice_date"),
+                    "buyer": {
+                        "name": entry.get("customer_name") or entry.get("supplier_name") or "",
+                        "gstin": entry.get("customer_gstin") or entry.get("supplier_gstin") or ""
+                    },
+                    "taxes": [
+                        {"type": "CGST", "amount": entry.get("cgst", 0)},
+                        {"type": "SGST", "amount": entry.get("sgst", 0)},
+                        {"type": "IGST", "amount": entry.get("igst", 0)}
+                    ],
+                    "total": entry.get("total_value", 0),
+                    "line_items": [{
+                        "desc": "Invoice Item",
+                        "qty": 1,
+                        "unit_price": entry.get("taxable_value", 0),
+                        "amount": entry.get("taxable_value", 0)
+                    }]
+                }
+                # Generate CSV for this invoice (without header)
+                csv_row = invoice_to_tally_csv(invoice_data)
+                # Skip the header row (first line) and write data rows
+                lines = csv_row.strip().split('\n')
+                if len(lines) > 1:
+                    # Write all lines except the first (header)
+                    for line in lines[1:]:
+                        buf.write(line + '\n')
+                elif len(lines) == 1 and lines[0].strip():
+                    # If only one line (no header), write it
+                    buf.write(lines[0] + '\n')
+            
+            csv_data = buf.getvalue()
+        else:
+            # Single invoice
+            csv_data = invoice_to_tally_csv(result)
+        
         return JSONResponse(content={"filename": f"{job_id}.csv", "content": csv_data})
 
 
@@ -1259,7 +1312,63 @@ def export_tally_xml(job_id: str, authorization: str = Header(None)):
         job = get_job_by_id(dbs, job_id)
         if not job or job.status != "succeeded" or not job.result:
             raise HTTPException(status_code=404, detail="job not found or not succeeded")
-        xml = invoice_to_tally_xml(job.result)
+        
+        result = job.result
+        if isinstance(result, str):
+            import json
+            result = json.loads(result)
+        
+        # Check if this is a register (has entries array)
+        if isinstance(result, dict) and "entries" in result:
+            # Register document - process all entries and combine into one XML
+            xml_parts = []
+            xml_parts.append("""<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME></REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">""")
+            
+            for entry in result.get("entries", []):
+                # Convert register entry to invoice-like structure for Tally XML
+                invoice_data = {
+                    "invoice_number": entry.get("invoice_number"),
+                    "date": entry.get("invoice_date"),
+                    "buyer": {
+                        "name": entry.get("customer_name") or entry.get("supplier_name") or "",
+                        "gstin": entry.get("customer_gstin") or entry.get("supplier_gstin") or ""
+                    },
+                    "total": entry.get("total_value", 0),
+                    "line_items": [{
+                        "desc": "Invoice Item",
+                        "qty": 1,
+                        "unit_price": entry.get("taxable_value", 0),
+                        "amount": entry.get("taxable_value", 0)
+                    }]
+                }
+                # Extract just the VOUCHER part from the XML (remove ENVELOPE wrapper)
+                single_xml = invoice_to_tally_xml(invoice_data)
+                # Extract VOUCHER content between <TALLYMESSAGE> tags
+                if "<VOUCHER" in single_xml:
+                    voucher_start = single_xml.find("<VOUCHER")
+                    voucher_end = single_xml.find("</VOUCHER>") + len("</VOUCHER>")
+                    if voucher_start >= 0 and voucher_end > voucher_start:
+                        voucher_xml = single_xml[voucher_start:voucher_end]
+                        xml_parts.append("          " + voucher_xml)
+            
+            xml_parts.append("""        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>""")
+            xml = "\n".join(xml_parts)
+        else:
+            # Single invoice
+            xml = invoice_to_tally_xml(result)
+        
         return JSONResponse(content={"filename": f"{job_id}.xml", "content": xml})
 
 
