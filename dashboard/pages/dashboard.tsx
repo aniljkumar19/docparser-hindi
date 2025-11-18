@@ -221,16 +221,21 @@ export default function Dashboard() {
           pollJob(jobId);
         }
       } else if (r.status === 404) {
-        // Job not found in API - might be from local dev or deleted
-        console.warn(`Job ${jobId} not found in API (404). Using cached data if available.`);
-        // Keep the cached job if it exists, but show a warning
-        if (selectedJob && selectedJob.job_id === jobId) {
-          // Already showing cached version, that's fine
-          setError("Job not found in server. Showing cached data.");
-        } else {
-          setError("Job not found. It may have been deleted or created in a different environment.");
-          setSelectedJob(null);
+        // Job not found in API - clear from cache and show message
+        console.warn(`Job ${jobId} not found in API (404). Clearing from cache.`);
+        if (typeof window !== "undefined") {
+          try {
+            sessionStorage.removeItem(`docparser_job_${jobId}`);
+            const lastJobId = sessionStorage.getItem("lastViewedJobId");
+            if (lastJobId === jobId) {
+              sessionStorage.removeItem("lastViewedJobId");
+            }
+          } catch (e) {
+            console.warn("Failed to clear job from sessionStorage", e);
+          }
         }
+        setError("Job not found. It may have been deleted or created in a different environment.");
+        setSelectedJob(null);
       } else {
         console.error("Failed to load job:", r.status, r.statusText);
         const errorText = await r.text().catch(() => "");
