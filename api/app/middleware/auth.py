@@ -6,7 +6,7 @@ from fastapi import Request, HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from sqlalchemy.orm import Session
-from ..db import SessionLocal, ApiKey
+from app.db import SessionLocal, ApiKey
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 

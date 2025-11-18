@@ -5,8 +5,8 @@ from fastapi import APIRouter, HTTPException, status, Header, Depends, Request
 from typing import Optional
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from ..db import SessionLocal, ApiKey
-from ..security import hash_api_key
+from .db import SessionLocal, ApiKey
+from .security import hash_api_key
 
 router = APIRouter(prefix="/v1/api-keys", tags=["API Keys"])
 
@@ -58,7 +58,7 @@ def get_current_tenant(request: Request, authorization: str | None = Header(None
         return request.state.tenant_id
     
     # Fallback: verify API key and extract tenant_id
-    from ..security import verify_api_key
+    from .security import verify_api_key
     try:
         _, tenant_id = verify_api_key(authorization, x_api_key)
         return tenant_id
