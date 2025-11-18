@@ -67,9 +67,15 @@ def verify_api_key(authorization: str | None, x_api_key: str | None) -> tuple[st
     import logging
     key = _extract_key(authorization, x_api_key)
     
-    # Log the key being verified (first 8 chars only for security)
-    key_preview = key[:8] + "..." if len(key) > 8 else key
-    logging.info(f"Verifying API key: {key_preview} (length: {len(key)})")
+    # Log the key being verified (first 12 chars + last 4 for debugging)
+    key_preview = key[:12] + "..." + key[-4:] if len(key) > 16 else key
+    logging.info(f"Verifying API key: {key_preview} (length: {len(key)}, starts with: {key[:3] if len(key) >= 3 else key})")
+    
+    # Check for common issues
+    if key.startswith(" ") or key.endswith(" "):
+        logging.warning(f"⚠️  API key has leading/trailing whitespace! Original length: {len(key)}")
+        key = key.strip()
+        logging.info(f"   Trimmed key: {key[:12]}...{key[-4:]} (length: {len(key)})")
     
     # First, try database lookup (new method)
     key_hash = hash_api_key(key)
@@ -116,10 +122,19 @@ def verify_api_key(authorization: str | None, x_api_key: str | None) -> tuple[st
             # Log what we found for debugging
             logging.warning(f"❌ No matching API key found in database")
             logging.warning(f"   Searched hash: {key_hash[:16]}...")
+            logging.warning(f"   Key being verified: {key_preview} (length: {len(key)})")
             logging.warning(f"   Total keys in DB: {len(all_keys)}, Active: {len(all_active_keys)}")
             if all_keys:
                 for k in all_keys[:5]:  # Show first 5 for debugging
                     logging.warning(f"   - Key ID: {k.id}, Name: {k.name}, Hash: {k.key_hash[:16]}..., Active: {k.is_active}")
+                    # Try to help user - show what the key should start with
+                    if k.name:
+                        logging.warning(f"     (This key was created with name: '{k.name}')")
+            
+            # Additional help: check if key format is wrong
+            if not key.startswith("dp_"):
+                logging.warning(f"   ⚠️  Key doesn't start with 'dp_' - database keys should start with 'dp_'")
+                logging.warning(f"   Are you using the correct key? Database keys look like: dp_xxxxxxxxxxxx")
     
     # Fallback to legacy env var method (for backward compatibility)
     logging.info(f"Database lookup failed, checking env vars. Available keys: {list(API_KEY_TENANTS.keys())}")
