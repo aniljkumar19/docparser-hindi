@@ -1623,27 +1623,6 @@ export default function Dashboard() {
                           </button>
                         </>
                       )}
-                      
-                      {(selectedJob.doc_type === "gst_invoice" || selectedJob.doc_type === "invoice") && (
-                        <>
-                          <button
-                            onClick={() => downloadExport("tally-xml")}
-                            className="flex flex-col items-center justify-center rounded-xl border border-orange-500/40 bg-orange-500/10 px-4 py-4 text-center hover:bg-orange-500/20 transition"
-                          >
-                            <span className="text-lg mb-1">📋</span>
-                            <span className="text-[11px] font-medium text-orange-200">Tally XML</span>
-                            <span className="text-[10px] text-orange-300/70 mt-1">Import to Tally</span>
-                          </button>
-                          <button
-                            onClick={() => downloadExport("tally-csv")}
-                            className="flex flex-col items-center justify-center rounded-xl border border-orange-500/40 bg-orange-500/10 px-4 py-4 text-center hover:bg-orange-500/20 transition"
-                          >
-                            <span className="text-lg mb-1">📊</span>
-                            <span className="text-[11px] font-medium text-orange-200">Tally CSV</span>
-                            <span className="text-[10px] text-orange-300/70 mt-1">CSV format</span>
-                          </button>
-                        </>
-                      )}
                     </div>
                     
                     {/* STEP 6: Export hints */}
