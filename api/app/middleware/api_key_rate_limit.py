@@ -47,17 +47,32 @@ class ApiKeyAndRateLimitMiddleware:
             return await self.app(scope, receive, send)
 
         # Clone request body (important for multipart/form-data uploads)
-        body = b""
-        more = True
+        # We need to read the body to check it, but also preserve it for FastAPI
+        body_chunks = []
+        more_body = True
         receive_ = receive
 
         async def inner_receive():
-            nonlocal body, more, receive_
+            nonlocal body_chunks, more_body, receive_
             message = await receive_()
             if message["type"] == "http.request":
-                body += message.get("body", b"")
-                more = message.get("more_body", False)
+                body_chunks.append(message.get("body", b""))
+                more_body = message.get("more_body", False)
             return message
+        
+        # Actually read the body by creating a temporary Request (this will trigger inner_receive)
+        # But we'll recreate it properly for FastAPI
+        try:
+            # Create Request to trigger body reading, but we'll recreate the stream
+            temp_request = Request(scope, receive=inner_receive)
+            # Force body read by accessing it (but we'll use body_chunks instead)
+            await temp_request.body()  # This triggers inner_receive to read all chunks
+        except Exception:
+            # If body reading fails, continue anyway (might be GET request)
+            pass
+        
+        # Combine all body chunks
+        body = b"".join(body_chunks)
 
         path = scope["path"]
         path_lower = path.lower()
@@ -163,12 +178,12 @@ class ApiKeyAndRateLimitMiddleware:
                 return await response(scope, receive, send)
 
         # Recreate receive stream for downstream FastAPI (preserve body)
+        body_sent = False
         async def new_receive():
-            nonlocal body, more
-            if body:
-                chunk = body
-                body = b""  # Clear after first read
-                return {"type": "http.request", "body": chunk, "more_body": False}
+            nonlocal body, body_sent
+            if not body_sent and body:
+                body_sent = True
+                return {"type": "http.request", "body": body, "more_body": False}
             return {"type": "http.request", "body": b"", "more_body": False}
 
         # Set authentication info in request.state (need to pass through scope)
