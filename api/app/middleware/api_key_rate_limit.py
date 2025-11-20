@@ -46,11 +46,15 @@ class ApiKeyAndRateLimitMiddleware:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
 
-        # Don't consume the body - we only need headers for auth/rate limiting
-        # FastAPI will read the body when it needs to
-
         path = scope["path"]
         path_lower = path.lower()
+        
+        # Debug: Log every request to confirm middleware is running
+        method = scope.get("method", "UNKNOWN")
+        print(f"[RateLimitMiddleware] __call__ invoked: {method} {path}")
+        
+        # Don't consume the body - we only need headers for auth/rate limiting
+        # FastAPI will read the body when it needs to
 
         # Skip auth/rate limiting for public paths
         PUBLIC_PATHS_EXACT = ["/", "/health", "/docs", "/openapi.json", "/redoc"]
