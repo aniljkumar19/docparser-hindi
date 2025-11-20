@@ -128,8 +128,9 @@ class ApiKeyAndRateLimitMiddleware:
         now = time.time()
 
         # Global rate limit
-        if not self._check_rate_limit(bucket_key, "requests", self.req_limit_per_min, now):
-            print(f"[RateLimitMiddleware] ❌ Rate limit exceeded (general) for {path}")
+        allowed = self._check_rate_limit(bucket_key, "requests", self.req_limit_per_min, now)
+        if not allowed:
+            print(f"[RateLimitMiddleware] ❌ Rate limit exceeded (general) for {path} (bucket: {bucket_key[:30]}...)")
             response = JSONResponse(
                 status_code=429,
                 content={
@@ -138,11 +139,18 @@ class ApiKeyAndRateLimitMiddleware:
                 },
             )
             return await response(scope, receive, send)
+        
+        # Debug: log first few requests to see rate limiting in action
+        if path_lower.startswith("/v1/jobs"):
+            current_count = len(self._request_buckets.get(bucket_key, deque()))
+            if current_count <= 5 or current_count % 10 == 0:
+                print(f"[RateLimitMiddleware] Rate limit check: {path} -> bucket_key={bucket_key[:30]}..., count={current_count}/{self.req_limit_per_min}")
 
         # Upload-specific limit
         if is_upload:
-            if not self._check_rate_limit(bucket_key, "uploads", self.upload_limit_per_min, now):
-                print(f"[RateLimitMiddleware] ❌ Rate limit exceeded (uploads) for {path}")
+            allowed = self._check_rate_limit(bucket_key, "uploads", self.upload_limit_per_min, now)
+            if not allowed:
+                print(f"[RateLimitMiddleware] ❌ Rate limit exceeded (uploads) for {path} (bucket: {bucket_key[:30]}...)")
                 response = JSONResponse(
                     status_code=429,
                     content={
@@ -151,6 +159,11 @@ class ApiKeyAndRateLimitMiddleware:
                     },
                 )
                 return await response(scope, receive, send)
+            
+            # Debug: log upload rate limiting
+            current_upload_count = len(self._upload_buckets.get(bucket_key, deque()))
+            if current_upload_count <= 3:
+                print(f"[RateLimitMiddleware] Upload rate limit check: {path} -> bucket_key={bucket_key[:30]}..., count={current_upload_count}/{self.upload_limit_per_min}")
 
         # Pass to downstream FastAPI with original receive (body intact)
         # FastAPI will read the body when it needs to (for file uploads, etc.)
@@ -229,19 +242,20 @@ class ApiKeyAndRateLimitMiddleware:
         dq = buckets[key]
         
         # Drop entries older than 60s
+        removed = 0
         while dq and now - dq[0] > window:
             dq.popleft()
+            removed += 1
         
         current_count = len(dq)
+        
+        # Debug logging for rate limit checks (first 10 and every 10th after that)
+        if current_count < 10 or current_count % 10 == 0:
+            print(f"[RateLimitMiddleware] _check_rate_limit_memory: {limit_type} key={key[:30]}..., count={current_count}/{limit_per_minute}, removed={removed} old entries")
+        
         if current_count >= limit_per_minute:
-            # Log for debugging
-            import logging
-            logging.debug(f"Rate limit exceeded: {limit_type} for {key[:20]}... (count: {current_count}, limit: {limit_per_minute})")
+            print(f"[RateLimitMiddleware] ❌ RATE LIMIT EXCEEDED: {limit_type} for {key[:30]}... (count: {current_count}, limit: {limit_per_minute})")
             return False
         
         dq.append(now)
-        # Log for debugging (only first few to avoid spam)
-        if current_count < 3:
-            import logging
-            logging.debug(f"Rate limit check: {limit_type} for {key[:20]}... (count: {current_count + 1}/{limit_per_minute})")
         return True
