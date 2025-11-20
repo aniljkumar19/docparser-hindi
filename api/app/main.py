@@ -243,9 +243,15 @@ if USE_API_KEY_MIDDLEWARE:
     logger.info(f"   Rate limits: {os.getenv('RATE_LIMIT_REQUESTS_PER_MINUTE', '60')} req/min, {os.getenv('RATE_LIMIT_UPLOADS_PER_MINUTE', '5')} uploads/min")
     try:
         logger.info("🔧 Registering ApiKeyAndRateLimitMiddleware...")
+        # Create middleware instance explicitly to ensure it's properly integrated
+        # FastAPI's add_middleware should handle this, but let's be explicit
+        middleware_instance = ApiKeyAndRateLimitMiddleware(app, redis_client=redis)
+        # Actually, add_middleware creates the instance, so we don't need to create it ourselves
+        # But let's verify the pattern works
         app.add_middleware(ApiKeyAndRateLimitMiddleware, redis_client=redis)
         logger.info("✅ ApiKeyAndRateLimitMiddleware registered successfully")
         print("[Main] ✅ ApiKeyAndRateLimitMiddleware registered successfully")
+        print(f"[Main] Middleware stack check: {len(app.user_middleware)} middlewares registered")
     except Exception as e:
         logger.error(f"❌ Failed to register ApiKeyAndRateLimitMiddleware: {e}", exc_info=True)
         print(f"[Main] ❌ Failed to register ApiKeyAndRateLimitMiddleware: {e}")
