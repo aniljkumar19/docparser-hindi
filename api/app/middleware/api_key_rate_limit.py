@@ -19,30 +19,44 @@ class ApiKeyAndRateLimitMiddleware(BaseHTTPMiddleware):
     """
 
     def __init__(self, app, redis_client=None):
-        super().__init__(app)
-        self.api_key_required = os.getenv("DOCPARSER_API_KEY")
-        self.req_limit_per_min = int(os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "60"))
-        self.upload_limit_per_min = int(os.getenv("RATE_LIMIT_UPLOADS_PER_MINUTE", "5"))
-        
-        # Redis client for distributed rate limiting (optional)
-        self.redis = redis_client
-        self.use_redis = redis_client is not None
-        
-        # Fallback: in-memory rate limiting (for single-instance or when Redis unavailable)
-        if not self.use_redis:
-            self._request_buckets: dict[str, deque[float]] = defaultdict(deque)
-            self._upload_buckets: dict[str, deque[float]] = defaultdict(deque)
+        import logging
+        logging.info("🔧 ApiKeyAndRateLimitMiddleware.__init__ called")
+        try:
+            super().__init__(app)
+            self.api_key_required = os.getenv("DOCPARSER_API_KEY")
+            self.req_limit_per_min = int(os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "60"))
+            self.upload_limit_per_min = int(os.getenv("RATE_LIMIT_UPLOADS_PER_MINUTE", "5"))
+            
+            # Redis client for distributed rate limiting (optional)
+            self.redis = redis_client
+            self.use_redis = redis_client is not None
+            
+            # Fallback: in-memory rate limiting (for single-instance or when Redis unavailable)
+            if not self.use_redis:
+                self._request_buckets: dict[str, deque[float]] = defaultdict(deque)
+                self._upload_buckets: dict[str, deque[float]] = defaultdict(deque)
+            
+            logging.info(f"✅ ApiKeyAndRateLimitMiddleware initialized successfully")
+            logging.info(f"   api_key_required: {bool(self.api_key_required)} (length: {len(self.api_key_required) if self.api_key_required else 0})")
+            logging.info(f"   use_redis: {self.use_redis}")
+        except Exception as e:
+            logging.error(f"❌ Failed to initialize ApiKeyAndRateLimitMiddleware: {e}", exc_info=True)
+            raise
 
     async def dispatch(self, request: Request, call_next):
+        import logging
         path = request.url.path
+        
+        # Log that middleware is running (even for public paths)
+        logging.info(f"🔐 Middleware dispatch called: {path}")
 
         # Skip auth/rate limiting for public paths
         PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/redoc", "/dashboard", "/_next"]
         if any(path.startswith(public) for public in PUBLIC_PATHS):
+            logging.debug(f"   → Public path, skipping auth/rate limit")
             return await call_next(request)
 
         # Debug logging
-        import logging
         logging.info(f"🔐 Middleware intercepting: {path} (api_key_required={bool(self.api_key_required)})")
 
         # 1) API key check
