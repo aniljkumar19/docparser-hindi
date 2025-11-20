@@ -52,15 +52,18 @@ class ApiKeyAndRateLimitMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         
         # Log that middleware is running (even for public paths)
+        print(f"[RateLimitMiddleware] dispatch called for: {path}")
         logging.info(f"🔐 Middleware dispatch called: {path}")
 
         # Skip auth/rate limiting for public paths
         PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/redoc", "/dashboard", "/_next"]
         if any(path.startswith(public) for public in PUBLIC_PATHS):
+            print(f"[RateLimitMiddleware] Public path {path}, skipping auth")
             logging.debug(f"   → Public path, skipping auth/rate limit")
             return await call_next(request)
 
         # Debug logging
+        print(f"[RateLimitMiddleware] Intercepting: {path} (api_key_required={bool(self.api_key_required)})")
         logging.info(f"🔐 Middleware intercepting: {path} (api_key_required={bool(self.api_key_required)})")
 
         # 1) API key check
@@ -72,6 +75,7 @@ class ApiKeyAndRateLimitMiddleware(BaseHTTPMiddleware):
                 or request.query_params.get("api_key")
             )
             if not presented_key:
+                print(f"[RateLimitMiddleware] ❌ No API key provided for {path}")
                 return JSONResponse(
                     status_code=401,
                     content={
@@ -82,6 +86,9 @@ class ApiKeyAndRateLimitMiddleware(BaseHTTPMiddleware):
             if presented_key != self.api_key_required:
                 # Log for debugging (but don't expose the actual key)
                 import logging
+                print(f"[RateLimitMiddleware] ❌ API key mismatch for {path}")
+                print(f"   Provided key length: {len(presented_key) if presented_key else 0}")
+                print(f"   Required key length: {len(self.api_key_required) if self.api_key_required else 0}")
                 logging.warning(f"🔐 Middleware: API key mismatch!")
                 logging.warning(f"   Provided key length: {len(presented_key) if presented_key else 0}")
                 logging.warning(f"   Required key length: {len(self.api_key_required) if self.api_key_required else 0}")
