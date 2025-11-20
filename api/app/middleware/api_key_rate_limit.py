@@ -82,10 +82,13 @@ class ApiKeyAndRateLimitMiddleware:
             if "api_key" in query_params:
                 presented_key = query_params["api_key"][0]
         
-        # Get client IP from scope
+        # Get client IP from scope (for logging only)
         client_info = scope.get("client")
         client_ip = client_info[0] if client_info else "unknown"
-        bucket_key = f"{client_ip}:{presented_key or 'anonymous'}"
+        
+        # Use API key as bucket key (not IP + key) so rate limiting works across load balancers
+        # This ensures all requests with the same API key share the same rate limit bucket
+        bucket_key = presented_key or f"anonymous:{client_ip}"
 
         # Debug logging
         import logging
