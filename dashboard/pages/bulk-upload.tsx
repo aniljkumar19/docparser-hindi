@@ -1,5 +1,6 @@
 // Bulk upload interface for CA firms
 import { useState } from "react";
+import { getApiBase } from '../utils/api';
 
 type Batch = {
   batch_id: string;
@@ -69,7 +70,7 @@ export default function BulkUpload() {
     if (docType) formData.append("doc_type", docType);
 
     try {
-      const apiBase = process.env.NEXT_PUBLIC_DOCPARSER_API_BASE || "http://localhost:8000";
+      const apiBase = getApiBase();
       const response = await fetch(`${apiBase}/v1/bulk-parse`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${process.env.NEXT_PUBLIC_DOCPARSER_API_KEY || "dev_123"}` },
@@ -97,7 +98,7 @@ export default function BulkUpload() {
     try {
       let tries = 0;
       while (tries++ < 60) { // Poll for up to 1 minute
-        const apiBase = process.env.NEXT_PUBLIC_DOCPARSER_API_BASE || "http://localhost:8000";
+        const apiBase = getApiBase();
         const response = await fetch(`${apiBase}/v1/batches/${batchId}`, {
           headers: { "x-api-key": process.env.NEXT_PUBLIC_DOCPARSER_API_KEY || "dev_123" }
         });
@@ -124,7 +125,7 @@ export default function BulkUpload() {
     if (!batch) return;
     
     try {
-      const apiBase = process.env.NEXT_PUBLIC_DOCPARSER_API_BASE || "http://localhost:8000";
+      const apiBase = getApiBase();
       const response = await fetch(`${apiBase}/v1/batches/${batch.batch_id}/export?format=${format}`, {
         headers: { "x-api-key": process.env.NEXT_PUBLIC_DOCPARSER_API_KEY || "dev_123" }
       });

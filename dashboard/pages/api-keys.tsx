@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { getApiBase } from '../utils/api';
 
 type ApiKey = {
   id: string;
@@ -11,14 +12,6 @@ type ApiKey = {
   last_used_at: string | null;
   created_at: string;
 };
-
-function getApiBase(): string {
-  if (typeof window !== "undefined") {
-    // In production, dashboard is served from same origin as API
-    return window.location.origin;
-  }
-  return process.env.NEXT_PUBLIC_DOCPARSER_API_BASE || "http://localhost:8000";
-}
 
 function getApiKey(): string {
   if (typeof window !== "undefined") {

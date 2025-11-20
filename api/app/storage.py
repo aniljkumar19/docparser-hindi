@@ -6,8 +6,20 @@ STORAGE_TYPE = os.getenv("STORAGE_TYPE", "").lower()
 USE_S3 = STORAGE_TYPE == "s3" or (os.getenv("S3_ENDPOINT") and os.getenv("S3_ENDPOINT") != "http://localhost:9000")
 
 # Local storage directory
-LOCAL_STORAGE_DIR = Path(os.getenv("LOCAL_STORAGE_DIR", "/app/uploads"))
-LOCAL_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+# Use /tmp/uploads as fallback if /app doesn't exist or isn't writable
+if Path("/app").exists():
+    default_storage = "/app/uploads"
+else:
+    # If not in Docker (/app doesn't exist), use a writable temp directory
+    default_storage = os.path.join(os.getenv("TMPDIR", "/tmp"), "docparser_uploads")
+LOCAL_STORAGE_DIR = Path(os.getenv("LOCAL_STORAGE_DIR", default_storage))
+
+# Try to create directory at startup, but don't fail if we can't (will create when needed)
+try:
+    LOCAL_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+except (PermissionError, OSError) as e:
+    import logging
+    logging.warning(f"Could not create local storage directory {LOCAL_STORAGE_DIR} at startup: {e}. Will create when needed.")
 
 # S3 configuration (only used if USE_S3 is True)
 S3_ENDPOINT = os.getenv("S3_ENDPOINT","http://localhost:9000")
@@ -52,7 +64,12 @@ def save_file_to_s3(key: str, data: bytes):
     
     # Fallback to local storage
     file_path = LOCAL_STORAGE_DIR / key
-    file_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError) as e:
+        import logging
+        logging.error(f"Could not create directory {file_path.parent}: {e}")
+        raise
     with open(file_path, 'wb') as f:
         f.write(data)
 

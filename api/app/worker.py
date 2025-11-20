@@ -17,6 +17,8 @@ from .parsers.gstr3b import normalize_gstr3b
 from .recon.purchase_vs_gstr3b import reconcile_pr_vs_gstr3b_itc
 from .parsers.gstr1 import normalize_gstr1
 from .recon.sales_vs_gstr1 import reconcile_sales_register_vs_gstr1
+from .recon.itc_2b_3b import reconcile_itc_2b_3b
+from .parsers.canonical import normalize_to_canonical
 
 import json
 import logging
@@ -99,6 +101,107 @@ def _attach_purchase_vs_gstr3b_recon(
         logger.info(f"Purchase vs GSTR-3B reconciliation attached for doc_type={doc_type}, tenant_id={tenant_id}")
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"Purchase vs GSTR-3B reconciliation failed: {exc}")
+        meta.setdefault("reconciliation_errors", []).append(str(exc))
+
+
+def _attach_itc_2b_3b_recon(
+    dbs, tenant_id: str | None, doc_type: str, result, meta: dict
+):
+    """
+    Attach ITC reconciliation (GSTR-2B vs GSTR-3B) using canonical format.
+    
+    This reconciliation compares:
+    - GSTR-2B: ITC available (from financials.tax_breakup)
+    - GSTR-3B: ITC claimed (from doc_specific.input_tax_credit.total)
+    """
+    if not isinstance(result, dict):
+        return
+    
+    # Only process if this is a GSTR-2B or GSTR-3B document
+    if doc_type not in ("gstr2b", "gstr3b"):
+        return
+    
+    # Use tenant_id if available, otherwise use empty string to match all jobs (for development)
+    search_tenant_id = tenant_id if tenant_id else ""
+    
+    # Extract GSTIN and period from current document for smart matching
+    source_gstin = _extract_gstin_from_result(result)
+    source_period_month, source_period_year = _extract_period_from_result(result)
+    
+    logger.info(f"ITC 2B vs 3B reconciliation: source_gstin={source_gstin}, period={source_period_month}/{source_period_year}, doc_type={doc_type}")
+    
+    other_job = None
+    if doc_type == "gstr2b":
+        logger.info(f"Looking for GSTR-3B job matching GSTIN={source_gstin}, period={source_period_month}/{source_period_year}")
+        # Use smart matching: find by GSTIN and period
+        if source_gstin and source_period_month and source_period_year:
+            other_job = find_matching_job_by_gstin_and_period(
+                dbs, search_tenant_id, "gstr3b",
+                source_gstin, source_period_month, source_period_year
+            )
+        # Fallback to simple doc_type matching if no GSTIN/period
+        if not other_job:
+            logger.info("Falling back to simple doc_type matching (no GSTIN/period available)")
+            other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "gstr3b")
+        
+        gstr2b_payload = result
+        gstr3b_payload = getattr(other_job, "result", None) if other_job else None
+        if other_job:
+            other_gstin = _extract_gstin_from_result(other_job.result)
+            other_period = _extract_period_from_result(other_job.result)
+            logger.info(f"Found GSTR-3B job {other_job.id} (GSTIN={other_gstin}, period={other_period[0]}/{other_period[1]})")
+        else:
+            logger.warning(f"No matching GSTR-3B found for GSTR-2B (GSTIN={source_gstin}, period={source_period_month}/{source_period_year})")
+    elif doc_type == "gstr3b":
+        logger.info(f"Looking for GSTR-2B job matching GSTIN={source_gstin}, period={source_period_month}/{source_period_year}")
+        # Use smart matching: find by GSTIN and period
+        if source_gstin and source_period_month and source_period_year:
+            other_job = find_matching_job_by_gstin_and_period(
+                dbs, search_tenant_id, "gstr2b",
+                source_gstin, source_period_month, source_period_year
+            )
+        # Fallback to simple doc_type matching if no GSTIN/period
+        if not other_job:
+            logger.info("Falling back to simple doc_type matching (no GSTIN/period available)")
+            other_job = get_latest_job_by_doc_type(dbs, search_tenant_id, "gstr2b")
+        
+        gstr2b_payload = getattr(other_job, "result", None) if other_job else None
+        gstr3b_payload = result
+        if other_job:
+            other_gstin = _extract_gstin_from_result(other_job.result)
+            other_period = _extract_period_from_result(other_job.result)
+            logger.info(f"Found GSTR-2B job {other_job.id} (GSTIN={other_gstin}, period={other_period[0]}/{other_period[1]})")
+        else:
+            logger.warning(f"No matching GSTR-2B found for GSTR-3B (GSTIN={source_gstin}, period={source_period_month}/{source_period_year})")
+    else:
+        return
+    
+    if not gstr2b_payload or not gstr3b_payload:
+        logger.debug(f"Missing payloads for ITC 2B vs 3B reconciliation: 2b={bool(gstr2b_payload)}, 3b={bool(gstr3b_payload)}")
+        return
+    
+    try:
+        # Convert both to canonical format for reconciliation
+        canonical_2b = normalize_to_canonical("gstr2b", gstr2b_payload)
+        canonical_3b = normalize_to_canonical("gstr3b", gstr3b_payload)
+        
+        # Perform reconciliation
+        recon = reconcile_itc_2b_3b(canonical_2b, canonical_3b)
+        
+        if other_job:
+            recon["paired_job_id"] = other_job.id
+            recon["source_gstr2b_job_id"] = other_job.id if doc_type == "gstr3b" else None
+            recon["source_gstr3b_job_id"] = other_job.id if doc_type == "gstr2b" else None
+            recon["source_gstr2b_filename"] = getattr(other_job, "filename", None) if doc_type == "gstr3b" else None
+            recon["source_gstr3b_filename"] = getattr(other_job, "filename", None) if doc_type == "gstr2b" else None
+        recon["source_doc_type"] = doc_type
+        
+        meta.setdefault("reconciliations", {})["itc_2b_3b"] = recon
+        logger.info(f"ITC 2B vs 3B reconciliation attached for doc_type={doc_type}, tenant_id={tenant_id}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"ITC 2B vs 3B reconciliation failed: {exc}")
+        import traceback
+        logger.debug(f"Traceback: {traceback.format_exc()}")
         meta.setdefault("reconciliation_errors", []).append(str(exc))
 
 
@@ -207,13 +310,28 @@ def parse_job_task(job_id: str):
 
             requested_doc_type = (job_meta or {}).get("requested_doc_type")
 
-            result, meta = parse_any(fn, data, forced_doc_type=requested_doc_type)
+            parse_result = parse_any(fn, data, forced_doc_type=requested_doc_type)
+            # parse_any returns (result, meta, doc_type) for JSON files, (result, meta) for others
+            # Handle both cases for backward compatibility
+            try:
+                if isinstance(parse_result, tuple) and len(parse_result) == 3:
+                    result, meta, detected_doc_type = parse_result
+                else:
+                    result, meta = parse_result
+                    detected_doc_type = None
+            except (ValueError, TypeError):
+                # Fallback: try to unpack as 2 values
+                result, meta = parse_result[:2] if isinstance(parse_result, (tuple, list)) else (parse_result, {})
+                detected_doc_type = None
+            
             meta = dict(meta or {})
             meta.setdefault("source_filename", fn)
             if requested_doc_type:
                 meta.setdefault("requested_doc_type", requested_doc_type)
+            if detected_doc_type:
+                meta.setdefault("detected_doc_type", detected_doc_type)
 
-            final_doc_type = requested_doc_type or meta.get("detected_doc_type") or meta.get("doc_type_internal") or "invoice"
+            final_doc_type = requested_doc_type or detected_doc_type or meta.get("detected_doc_type") or meta.get("doc_type_internal") or "invoice"
             
             # Fallback: if filename suggests GSTR-1 but detection failed, force re-check
             fn_lower = fn.lower()
@@ -276,6 +394,9 @@ def parse_job_task(job_id: str):
                 dbs, getattr(job, "tenant_id", None), final_doc_type, result, meta
             )
             _attach_sales_vs_gstr1_recon(
+                dbs, getattr(job, "tenant_id", None), final_doc_type, result, meta
+            )
+            _attach_itc_2b_3b_recon(
                 dbs, getattr(job, "tenant_id", None), final_doc_type, result, meta
             )
             logger.info(f"Reconciliation complete for job {job_id}. Meta reconciliations: {list(meta.get('reconciliations', {}).keys())}")

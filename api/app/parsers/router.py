@@ -72,6 +72,7 @@ SUPPORTED_DOC_TYPES = {
     "gstr",
     "gstr3b",
     "gstr1",
+    "gstr2b",
     "purchase_register",
     "sales_register",
 }
@@ -117,6 +118,30 @@ def _resolve_forced_doc_type(value: str | None) -> tuple[str | None, str | None]
 
 def parse_any(filename: str, data: bytes, forced_doc_type: str | None = None):
     t0 = time.time()
+    
+    # Handle JSON files (especially for GSTR-2B sample)
+    if filename.lower().endswith('.json'):
+        try:
+            import json
+            json_data = json.loads(data.decode('utf-8'))
+            # If it's already parsed JSON with doc_type, return it directly
+            if isinstance(json_data, dict) and json_data.get('doc_type'):
+                doc_type = json_data.get('doc_type')
+                result = json_data
+                meta = {
+                    "pages": 1,
+                    "ocr_used": False,
+                    "processing_ms": int((time.time() - t0) * 1000),
+                    "detected_doc_type": doc_type,
+                    "doc_type_scores": {doc_type: 10},
+                    "doc_type_confidence": 1.0,
+                    "text_source": "json_file",
+                    "parser_version": json_data.get('meta', {}).get('parser_version', 'unknown'),
+                }
+                return result, meta, doc_type
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass  # Fall through to normal text extraction
+    
     raw_text, ocr_used = extract_text_safely(data, filename)
     cleaned_text = normalize_text(raw_text)
     text_len = len(cleaned_text)

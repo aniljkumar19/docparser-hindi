@@ -1,0 +1,55 @@
+{
+  "doc_type": "gstr2b",
+  "gstin": "27ABCDE1234F2Z5",
+  "legal_name": "ABC TRADERS PRIVATE LIMITED",
+  "trade_name": "ABC TRADERS",
+  "period": {
+    "month": 11,
+    "year": 2025,
+    "label": "November 2025"
+  },
+  "summary": {
+    "total_taxable_value": 160000,
+    "total_igst": 9000,
+    "total_cgst": 9900,
+    "total_sgst": 9900,
+    "total_cess": 0
+  },
+  "b2b": [
+    {
+      "supplier_gstin": "27ABCDEF1234Z5",
+      "supplier_name": "ABC DISTRIBUTORS",
+      "invoice_number": "INV-001",
+      "invoice_date": "2025-11-05",
+      "place_of_supply": "27",
+      "invoice_value": 118000,
+      "taxable_value": 100000,
+      "igst": 0,
+      "cgst": 9000,
+      "sgst": 9000,
+      "cess": 0,
+      "itc_availability": "availed",
+      "reason": null
+    },
+    {
+      "supplier_gstin": "29XYZSTO1234Z9",
+      "supplier_name": "XYZ STORES",
+      "invoice_number": "INV-002",
+      "invoice_date": "2025-11-10",
+      "place_of_supply": "29",
+      "invoice_value": 59000,
+      "taxable_value": 50000,
+      "igst": 9000,
+      "cgst": 0,
+      "sgst": 0,
+      "cess": 0,
+      "itc_availability": "availed",
+      "reason": null
+    }
+  ],
+  "warnings": [],
+  "meta": {
+    "parser_version": "gstr2b_v1"
+  }
+}
+

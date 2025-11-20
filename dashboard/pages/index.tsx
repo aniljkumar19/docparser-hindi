@@ -1,5 +1,6 @@
 // ...existing imports
 import { useState } from "react";
+import { getApiBase } from '../utils/api';
 
 type Job = {
   job_id: string;
@@ -183,7 +184,7 @@ export default function Home() {
     }
     try {
       // Call API directly (bypass Next.js proxy for POST with FormData)
-      const apiBase = process.env.NEXT_PUBLIC_DOCPARSER_API_BASE || "http://localhost:8000";
+      const apiBase = getApiBase();
       const r = await fetch(`${apiBase}/v1/parse`, {
         method: "POST",
         headers: { 
@@ -216,7 +217,7 @@ export default function Home() {
     try {
       let tries = 0;
       while (tries++ < 30) {
-          const apiBase = process.env.NEXT_PUBLIC_DOCPARSER_API_BASE || "http://localhost:8000";
+          const apiBase = getApiBase();
           const r = await fetch(`${apiBase}/v1/jobs/${id}`, {
             headers: { "Authorization": `Bearer ${process.env.NEXT_PUBLIC_DOCPARSER_API_KEY || "dev_123"}` }
           });

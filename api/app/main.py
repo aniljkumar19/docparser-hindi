@@ -1,5 +1,5 @@
 import os, time, json
-from fastapi import FastAPI, UploadFile, File, Header, HTTPException, status, Form
+from fastapi import FastAPI, UploadFile, File, Header, HTTPException, status, Form, Query
 from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -44,6 +44,8 @@ from .exporters.registers import (
     purchase_register_to_csv,
     sales_register_to_zoho_json,
 )
+from .exporters.canonical_sales_register import canonical_sales_register_to_csv
+from .validators import validate_sales_register, validate_gstr2b, validate_gstr3b
 from .exporters.reconciliation import (
     export_missing_invoices_csv,
     export_value_mismatches_csv,
@@ -99,12 +101,14 @@ app.include_router(admin_api_keys_router)
 
 # CORS origins - configurable via environment variable
 # Format: comma-separated list of origins, e.g., "http://localhost:3000,https://yourdomain.com"
-cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+# Note: Including typo variant 'locahost' as temporary workaround for browser cache issues
+cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://locahost:3000")
 origins = [origin.strip() for origin in cors_origins_str.split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["Authorization", "Content-Type", "x-api-key", "X-API-Key"],
 )
@@ -177,6 +181,11 @@ def root():
     
     # Get frontend URL if configured - construct dashboard URL
     base_url = os.getenv("FRONTEND_URL") or os.getenv("RAILWAY_PUBLIC_DOMAIN") or (os.getenv("CORS_ORIGINS", "").split(",")[0] if os.getenv("CORS_ORIGINS") else "")
+    
+    # For local development, default to localhost:3000 if no URL is set
+    if not base_url and not is_railway:
+        base_url = "http://localhost:3000"
+    
     if base_url:
         # Construct dashboard URL (remove protocol if present, add if needed)
         if base_url.startswith("http://") or base_url.startswith("https://"):
@@ -184,8 +193,10 @@ def root():
         else:
             dashboard_url = f"https://{base_url}/dashboard"
         dashboard_text = f'visit the dashboard UI at <a href="{dashboard_url}" style="color: #60a5fa; text-decoration: underline;">{dashboard_url}</a>'
+        dashboard_header_link = f'<a href="{dashboard_url}" style="color: #60a5fa; text-decoration: none; font-size: 12px; padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(96, 165, 250, 0.3); background: rgba(15, 23, 42, 0.6); transition: all 0.2s;" onmouseover="this.style.background=\'rgba(15, 23, 42, 0.9)\'; this.style.borderColor=\'rgba(96, 165, 250, 0.6)\';" onmouseout="this.style.background=\'rgba(15, 23, 42, 0.6)\'; this.style.borderColor=\'rgba(96, 165, 250, 0.3)\';">📊 Dashboard</a>'
     else:
         dashboard_text = "dashboard UI available separately"
+        dashboard_header_link = ""
     html = """
     <!DOCTYPE html>
     <html lang="en">
@@ -531,9 +542,12 @@ def root():
               <div class="brand-text-sub">AI document parsing for CAs &amp; Indian SMEs</div>
             </div>
           </div>
-          <div class="tag">
-            <span class="tag-dot"></span>
-            <span>API online</span>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            {dashboard_header_link}
+            <div class="tag">
+              <span class="tag-dot"></span>
+              <span>API online</span>
+            </div>
           </div>
         </header>
 
@@ -686,7 +700,7 @@ def root():
       </div>
     </body>
     </html>
-    """.replace("{year}", year).replace("{env_label}", env_label).replace("{env_description}", env_description).replace("{dashboard_text}", dashboard_text)
+    """.replace("{year}", year).replace("{env_label}", env_label).replace("{env_description}", env_description).replace("{dashboard_text}", dashboard_text).replace("{dashboard_header_link}", dashboard_header_link)
     return HTMLResponse(content=html)
 
 
@@ -1063,7 +1077,14 @@ async def list_jobs(
 @app.get("/v1/jobs/{job_id}")
 async def get_job(job_id: str,
                   authorization: str | None = Header(None),
-                  x_api_key: str | None = Header(None, alias="x-api-key")):
+                  x_api_key: str | None = Header(None, alias="x-api-key"),
+                  format: str = "legacy"):
+    """
+    Get job result.
+    
+    Query parameters:
+    - format: "legacy" (default) or "canonical" - Return result in legacy or canonical JSON format
+    """
     # reuse your API key check (supports Authorization and X-API-Key)
     _, _tenant_id = verify_api_key(authorization, x_api_key)
 
@@ -1083,11 +1104,49 @@ async def get_job(job_id: str,
 
         result = _to_jsonable(getattr(job, "result", None))
         meta   = _to_jsonable(getattr(job, "meta", None)) or {}
+        doc_type = getattr(job, "doc_type", None) or "invoice"
 
+        # Convert to canonical format if requested
+        if format.lower() == "canonical" and result:
+            try:
+                from .parsers.canonical import normalize_to_canonical
+                import json
+                import logging
+                
+                # Parse result if it's a string
+                if isinstance(result, str):
+                    try:
+                        result = json.loads(result)
+                    except json.JSONDecodeError:
+                        pass
+                
+                # Convert to canonical
+                if isinstance(result, dict):
+                    logging.info(f"Converting job {job_id} to canonical format. doc_type={doc_type}, result keys={list(result.keys())[:5]}")
+                    canonical_result = normalize_to_canonical(doc_type, result)
+                    logging.info(f"Successfully converted job {job_id} to canonical format. schema_version={canonical_result.get('schema_version')}")
+                    return {
+                        "job_id": job.id,
+                        "status": job.status,
+                        "doc_type": doc_type,
+                        "filename": job.filename,
+                        "result": canonical_result,
+                        "meta": {**meta, "format": "canonical", "schema_version": "doc.v0.1"},
+                    }
+                else:
+                    logging.warning(f"Job {job_id} result is not a dict, cannot convert to canonical. Type: {type(result)}")
+            except Exception as e:
+                import logging
+                import traceback
+                logging.error(f"Failed to convert job {job_id} to canonical format: {e}")
+                logging.error(f"Traceback: {traceback.format_exc()}")
+                # Fall through to legacy format
+
+        # Return legacy format (default)
         return {
             "job_id": job.id,
             "status": job.status,
-            "doc_type": getattr(job, "doc_type", None),
+            "doc_type": doc_type,
             "filename": job.filename,
             "result": job.result,
             "meta": job.meta,
@@ -1639,6 +1698,130 @@ def export_sales_register_zoho(job_id: str, authorization: str = Header(None), x
         )
 
 
+@app.get("/v1/export/sales-csv-canonical/{job_id}")
+def export_sales_register_canonical_csv(job_id: str, authorization: str = Header(None), x_api_key: str = Header(None, alias="x-api-key")):
+    """Export sales register in canonical format to CSV."""
+    verify_api_key(authorization, x_api_key)
+    with SessionLocal() as dbs:
+        job = get_job_by_id(dbs, job_id)
+        if (
+            not job
+            or job.status != "succeeded"
+            or not job.result
+            or job.doc_type != "sales_register"
+        ):
+            raise HTTPException(status_code=400, detail="Not a sales_register job")
+        
+        # Convert to canonical format first
+        from .parsers.canonical import normalize_to_canonical
+        canonical = normalize_to_canonical("sales_register", job.result)
+        
+        # Export canonical to CSV
+        csv_data = canonical_sales_register_to_csv(canonical)
+        return JSONResponse(
+            content={"filename": f"sales_canonical_{job_id}.csv", "content": csv_data}
+        )
+
+
+@app.get("/v1/validate/{doc_type}/{job_id}")
+def validate_document(
+    doc_type: str,
+    job_id: str,
+    authorization: str = Header(None),
+    x_api_key: str = Header(None, alias="x-api-key")
+):
+    """
+    Validate a canonical document by doc_type and job_id.
+    
+    Supported doc_type: 'sales_register' | 'gstr2b' | 'gstr3b'
+    """
+    verify_api_key(authorization, x_api_key)
+    
+    with SessionLocal() as dbs:
+        job = get_job_by_id(dbs, job_id)
+        if not job or job.status != "succeeded" or not job.result:
+            raise HTTPException(status_code=404, detail="Job not found or not completed")
+        
+        # Convert to canonical format first
+        from .parsers.canonical import normalize_to_canonical
+        canonical = normalize_to_canonical(job.doc_type or doc_type, job.result)
+        
+        # Validate based on doc_type
+        issues = []
+        if doc_type == "sales_register":
+            issues = validate_sales_register(canonical, tolerance=1.0)
+        elif doc_type == "gstr2b":
+            issues = validate_gstr2b(canonical, tolerance=1.0)
+        elif doc_type == "gstr3b":
+            issues = validate_gstr3b(canonical, tolerance=1.0)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported doc_type: {doc_type}")
+        
+        return JSONResponse(
+            content={
+                "job_id": job_id,
+                "doc_type": doc_type,
+                "valid": len(issues) == 0,
+                "issues": issues,
+                "issue_count": len(issues),
+            }
+        )
+
+
+@app.get("/v1/validate/sales-register/{job_id}")
+def validate_sales_register_endpoint(job_id: str, authorization: str = Header(None), x_api_key: str = Header(None, alias="x-api-key")):
+    """Validate a sales register job (returns validation issues). Backward compatibility endpoint."""
+    return validate_document("sales_register", job_id, authorization, x_api_key)
+
+
+@app.get("/v1/reconcile/itc/2b-3b")
+def reconcile_itc_endpoint(
+    job2b_id: str = Query(..., description="Job ID for canonical GSTR-2B"),
+    job3b_id: str = Query(..., description="Job ID for canonical GSTR-3B"),
+    authorization: str = Header(None),
+    x_api_key: str = Header(None, alias="x-api-key")
+):
+    """
+    Reconcile ITC available in 2B vs ITC claimed in 3B.
+    
+    Returns structured reconciliation result with per-head breakdown and issues.
+    """
+    verify_api_key(authorization, x_api_key)
+    
+    from .recon.itc_2b_3b import reconcile_itc_2b_3b
+    from .parsers.canonical import normalize_to_canonical
+    
+    with SessionLocal() as dbs:
+        # Load GSTR-2B job
+        job2b = get_job_by_id(dbs, job2b_id)
+        if not job2b or job2b.status != "succeeded" or not job2b.result:
+            raise HTTPException(status_code=404, detail="GSTR-2B job not found or not completed")
+        if job2b.doc_type != "gstr2b":
+            raise HTTPException(status_code=400, detail=f"job2b_id is not a gstr2b document (got: {job2b.doc_type})")
+        
+        # Load GSTR-3B job
+        job3b = get_job_by_id(dbs, job3b_id)
+        if not job3b or job3b.status != "succeeded" or not job3b.result:
+            raise HTTPException(status_code=404, detail="GSTR-3B job not found or not completed")
+        if job3b.doc_type != "gstr3b":
+            raise HTTPException(status_code=400, detail=f"job3b_id is not a gstr3b document (got: {job3b.doc_type})")
+        
+        # Convert both to canonical format
+        canonical_2b = normalize_to_canonical("gstr2b", job2b.result)
+        canonical_3b = normalize_to_canonical("gstr3b", job3b.result)
+        
+        # Perform reconciliation
+        result = reconcile_itc_2b_3b(canonical_2b, canonical_3b)
+        
+        return JSONResponse(
+            content={
+                "job2b_id": job2b_id,
+                "job3b_id": job3b_id,
+                "result": result,
+            }
+        )
+
+
 @app.get("/v1/export/reconciliation/missing-invoices/{job_id}")
 def export_missing_invoices(
     job_id: str,
@@ -1738,12 +1921,25 @@ def export_itc_summary(
 @app.get("/v1/samples")
 def list_sample_documents():
     """List available sample documents for testing."""
-    samples_dir = Path("/app/samples") if Path("/app/samples").exists() else Path(__file__).parent.parent.parent / "samples"
+    # Try multiple possible locations
+    possible_dirs = [
+        Path("/app/samples"),  # Docker
+        Path(__file__).parent.parent / "samples",  # api/samples (local)
+        Path(__file__).parent.parent.parent / "samples",  # root/samples (fallback)
+    ]
+    samples_dir = None
+    for dir_path in possible_dirs:
+        if dir_path.exists():
+            samples_dir = dir_path
+            break
+    if not samples_dir:
+        samples_dir = Path(__file__).parent.parent / "samples"  # Default to api/samples
     
     samples = []
     sample_files = {
         "GSTR1.pdf": {"name": "GSTR-1 Return", "type": "gstr1", "description": "Sample GSTR-1 return for testing reconciliation"},
         "GSTR-3B.pdf": {"name": "GSTR-3B Return", "type": "gstr3b", "description": "Sample GSTR-3B return for ITC reconciliation"},
+        "gstr2b_sample.json": {"name": "GSTR-2B Return", "type": "gstr2b", "description": "Sample GSTR-2B return (JSON) for testing ITC invoice-level entries"},
         "sales_register.csv": {"name": "Sales Register", "type": "sales_register", "description": "Sample sales register CSV"},
         "purchase_register_complex.csv": {"name": "Purchase Register", "type": "purchase_register", "description": "Sample purchase register CSV"},
     }
@@ -1778,22 +1974,44 @@ def download_sample_document(filename: str):
     """Download a sample document for testing."""
     # Security: only allow specific filenames
     allowed_files = {
-        "GSTR1.pdf", "GSTR-3B.pdf", "sales_register.csv", 
-        "purchase_register_complex.csv", "purchase_register_dirty.csv",
+        "GSTR1.pdf", "GSTR-3B.pdf", "gstr2b_sample.json",
+        "sales_register.csv", "purchase_register_complex.csv", "purchase_register_dirty.csv",
         "sample_invoice.txt", "GSTN.pdf"
     }
     
     if filename not in allowed_files:
         raise HTTPException(status_code=404, detail="Sample file not found")
     
-    samples_dir = Path("/app/samples") if Path("/app/samples").exists() else Path(__file__).parent.parent.parent / "samples"
+    # Try multiple possible locations
+    possible_dirs = [
+        Path("/app/samples"),  # Docker
+        Path(__file__).parent.parent / "samples",  # api/samples (local)
+        Path(__file__).parent.parent.parent / "samples",  # root/samples (fallback)
+    ]
+    samples_dir = None
+    for dir_path in possible_dirs:
+        if dir_path.exists():
+            samples_dir = dir_path
+            break
+    if not samples_dir:
+        samples_dir = Path(__file__).parent.parent / "samples"  # Default to api/samples
     file_path = samples_dir / filename
     
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Sample file not found")
     
+    # Determine media type
+    if filename.endswith(".pdf"):
+        media_type = "application/pdf"
+    elif filename.endswith(".csv"):
+        media_type = "text/csv"
+    elif filename.endswith(".json"):
+        media_type = "application/json"
+    else:
+        media_type = "text/plain"
+    
     return FileResponse(
         path=str(file_path),
         filename=filename,
-        media_type="application/pdf" if filename.endswith(".pdf") else "text/csv" if filename.endswith(".csv") else "text/plain"
+        media_type=media_type
     )

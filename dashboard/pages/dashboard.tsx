@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
+import { getApiBase } from '../utils/api';
+import { ValidationPanel } from '../components/ValidationPanel';
+import { ItcReconciliationPanel } from '../components/ItcReconciliationPanel';
+import { ExportSalesRegisterButton } from '../components/ExportSalesRegisterButton';
 
 type Job = {
   job_id: string;
@@ -105,24 +109,17 @@ export default function Dashboard() {
   const [showRawJson, setShowRawJson] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [loadingJobs, setLoadingJobs] = useState(true);
-  const [activeTab, setActiveTab] = useState<"parsed" | "reconciliation" | "exports">("parsed");
+  const [activeTab, setActiveTab] = useState<"parsed" | "reconciliation" | "exports" | "validation">("parsed");
   const [loadingJob, setLoadingJob] = useState(false);
   const [salesReconTab, setSalesReconTab] = useState<"missing_gstr1" | "missing_sales" | "mismatches">("missing_gstr1");
   const [samples, setSamples] = useState<Array<{filename: string; name: string; type: string; description: string; size: number}>>([]);
   const [loadingSamples, setLoadingSamples] = useState(false);
   const [apiKey, setApiKey] = useState<string>("");
   const [showApiKeyScreen, setShowApiKeyScreen] = useState(false);
+  const [useCanonicalFormat, setUseCanonicalFormat] = useState(false);
+  const [validationIssues, setValidationIssues] = useState<Array<{code: string; level: string; message: string; meta: any}>>([]);
+  const [loadingValidation, setLoadingValidation] = useState(false);
 
-  // Helper to get API base URL (relative in production, absolute in dev)
-  function getApiBase(): string {
-    if (process.env.NEXT_PUBLIC_DOCPARSER_API_BASE) {
-      return process.env.NEXT_PUBLIC_DOCPARSER_API_BASE;
-    }
-    if (typeof window !== 'undefined') {
-      return window.location.origin; // Use same origin in production
-    }
-    return "http://localhost:8000"; // Fallback for SSR
-  }
 
   // Helper to get API key
   function getApiKey(): string {
@@ -198,7 +195,9 @@ export default function Dashboard() {
       }
 
       const apiBase = getApiBase();
-      const r = await fetch(`${apiBase}/v1/jobs/${jobId}`, {
+      // Add format parameter for canonical format
+      const formatParam = useCanonicalFormat ? "?format=canonical" : "";
+      const r = await fetch(`${apiBase}/v1/jobs/${jobId}${formatParam}`, {
         headers: {
           "Authorization": `Bearer ${getApiKey()}`
         },
@@ -315,7 +314,7 @@ export default function Dashboard() {
     if (job_id && typeof job_id === "string") {
       loadJobById(job_id);
     }
-  }, [job_id]);
+  }, [job_id, useCanonicalFormat]);
 
   async function uploadAndParse() {
     setError(null);
@@ -396,7 +395,9 @@ export default function Dashboard() {
       let tries = 0;
       while (tries++ < 30) {
         const apiBase = getApiBase();
-        const r = await fetch(`${apiBase}/v1/jobs/${id}`, {
+        // Add format parameter for canonical format
+        const formatParam = useCanonicalFormat ? "?format=canonical" : "";
+        const r = await fetch(`${apiBase}/v1/jobs/${id}${formatParam}`, {
           headers: { "Authorization": `Bearer ${getApiKey()}` }
         });
         
@@ -444,7 +445,7 @@ export default function Dashboard() {
     }
   }
 
-  async function downloadExport(kind: "json" | "sales-csv" | "purchase-csv" | "sales-zoho" | "tally-xml" | "tally-csv") {
+  async function downloadExport(kind: "json" | "sales-csv" | "purchase-csv" | "sales-zoho" | "tally-xml" | "tally-csv" | "sales-csv-canonical") {
     if (!selectedJob) return;
     
     const apiBase = getApiBase();
@@ -456,6 +457,7 @@ export default function Dashboard() {
     else if (kind === "sales-zoho") path = `/v1/export/sales-zoho/${selectedJob.job_id}`;
     else if (kind === "tally-xml") path = `/v1/export/tally-xml/${selectedJob.job_id}`;
     else if (kind === "tally-csv") path = `/v1/export/tally-csv/${selectedJob.job_id}`;
+    else if (kind === "sales-csv-canonical") path = `/v1/export/sales-csv-canonical/${selectedJob.job_id}`;
     
     const apiKey = getApiKey();
     if (!apiKey) {
@@ -506,6 +508,8 @@ export default function Dashboard() {
       if (kind === "json" || kind === "sales-zoho") {
         mimeType = "application/json;charset=utf-8";
       } else if (kind.includes("csv")) {
+        mimeType = "text/csv;charset=utf-8";
+      } else if (kind === "sales-csv-canonical") {
         mimeType = "text/csv;charset=utf-8";
       } else if (kind === "tally-xml") {
         mimeType = "application/xml;charset=utf-8";
@@ -646,7 +650,28 @@ export default function Dashboard() {
 
   const recon = selectedJob?.meta?.reconciliations?.purchase_vs_gstr3b_itc as PurchaseVsGstr3bRecon | undefined;
   const salesRecon = selectedJob?.meta?.reconciliations?.sales_vs_gstr1 as SalesVsGstr1Recon | undefined;
+  const itcRecon = selectedJob?.meta?.reconciliations?.itc_2b_3b as any | undefined;
   const detected = selectedJob?.meta?.detected_doc_type ?? selectedJob?.doc_type ?? null;
+  
+  // Find matching GSTR-2B or GSTR-3B job for ITC reconciliation
+  const findMatchingJob = (targetType: "gstr2b" | "gstr3b") => {
+    if (!selectedJob) return null;
+    // Check if current job is the target type
+    if (selectedJob.doc_type === targetType) return selectedJob.job_id;
+    // Check if reconciliation has paired job
+    if (itcRecon?.paired_job_id) {
+      if (targetType === "gstr2b" && selectedJob.doc_type === "gstr3b") {
+        return itcRecon.source_gstr2b_job_id || null;
+      }
+      if (targetType === "gstr3b" && selectedJob.doc_type === "gstr2b") {
+        return itcRecon.source_gstr3b_job_id || null;
+      }
+    }
+    return null;
+  };
+  
+  const gstr2bJobId = findMatchingJob("gstr2b");
+  const gstr3bJobId = findMatchingJob("gstr3b");
 
   // Debug: Log reconciliation data
   if (selectedJob) {
@@ -1038,7 +1063,7 @@ export default function Dashboard() {
                       >
                         Parsed JSON
                       </button>
-                      {(recon || salesRecon) && (
+                      {(recon || salesRecon || itcRecon) && (
                         <button
                           onClick={() => setActiveTab("reconciliation")}
                           className={`px-4 py-2 text-[11px] font-medium transition ${
@@ -1048,6 +1073,20 @@ export default function Dashboard() {
                           }`}
                         >
                           Reconciliation
+                        </button>
+                      )}
+                      {(selectedJob?.doc_type === "sales_register" || 
+                        selectedJob?.doc_type === "gstr2b" || 
+                        selectedJob?.doc_type === "gstr3b") && (
+                        <button
+                          onClick={() => setActiveTab("validation")}
+                          className={`px-4 py-2 text-[11px] font-medium transition ${
+                            activeTab === "validation"
+                              ? "text-slate-100 border-b-2 border-indigo-500"
+                              : "text-slate-400 hover:text-slate-200"
+                          }`}
+                        >
+                          Validation
                         </button>
                       )}
                       <button
@@ -1069,16 +1108,74 @@ export default function Dashboard() {
                   <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-lg shadow-black/40">
                     <div className="mb-3 flex items-center justify-between">
                       <h3 className="text-xs font-semibold text-slate-200">Parsed Output</h3>
-                      {polling && (
-                        <span className="text-[10px] text-slate-400 animate-pulse">Processing...</span>
-                      )}
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={useCanonicalFormat}
+                            onChange={(e) => {
+                              setUseCanonicalFormat(e.target.checked);
+                              // Reload job with new format
+                              if (selectedJob?.job_id) {
+                                loadJobById(selectedJob.job_id);
+                              }
+                            }}
+                            className="rounded border-slate-600 bg-slate-800 text-indigo-500 focus:ring-indigo-500"
+                          />
+                          <span className="text-[10px] text-slate-300">
+                            Canonical Format (v0.1)
+                          </span>
+                        </label>
+                        {polling && (
+                          <span className="text-[10px] text-slate-400 animate-pulse">Processing...</span>
+                        )}
+                      </div>
                     </div>
+                    {useCanonicalFormat && selectedJob?.result?.schema_version && (
+                      <div className="mb-3 rounded-lg bg-indigo-500/10 border border-indigo-500/30 px-3 py-2 text-[11px] text-indigo-300">
+                        <span className="font-medium">📋 Canonical Format:</span>{" "}
+                        <span className="font-mono">{selectedJob.result.schema_version}</span>
+                        {" · "}
+                        <span className="font-medium">Doc Type:</span>{" "}
+                        <span className="font-mono">{selectedJob.result.doc_type}</span>
+                      </div>
+                    )}
                     {/* STEP 7: Enhanced JSON beautifier */}
                     <div className="rounded-xl bg-slate-950/90 border border-slate-800 overflow-hidden">
                       <pre className="max-h-[600px] overflow-auto p-4 text-[11px] text-slate-100 font-mono leading-relaxed">
                         {JSON.stringify(selectedJob.result || {}, null, 2)}
                       </pre>
                     </div>
+                  </section>
+                )}
+
+                {activeTab === "validation" && selectedJob && (
+                  <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-lg shadow-black/40">
+                    <h3 className="text-xs font-semibold text-slate-200 mb-4">Document Validation</h3>
+                    {(selectedJob.doc_type === "sales_register" || 
+                      selectedJob.doc_type === "gstr2b" || 
+                      selectedJob.doc_type === "gstr3b") ? (
+                      <ValidationPanel 
+                        docType={selectedJob.doc_type as "sales_register" | "gstr2b" | "gstr3b"} 
+                        jobId={selectedJob.job_id} 
+                      />
+                    ) : (
+                      <div className="text-sm text-gray-500">
+                        Validation is available for sales_register, gstr2b, and gstr3b documents.
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                {activeTab === "reconciliation" && itcRecon && (selectedJob?.doc_type === "gstr2b" || selectedJob?.doc_type === "gstr3b") && (
+                  <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-lg shadow-black/40 mb-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-200 mb-4">
+                      ITC Reconciliation – GSTR-2B vs GSTR-3B
+                    </h3>
+                    <ItcReconciliationPanel 
+                      job2bId={gstr2bJobId} 
+                      job3bId={gstr3bJobId} 
+                    />
                   </section>
                 )}
 
@@ -1627,6 +1724,14 @@ export default function Dashboard() {
                             <span className="text-lg mb-1">📊</span>
                             <span className="text-[11px] font-medium text-emerald-200">Sales CSV</span>
                             <span className="text-[10px] text-emerald-300/70 mt-1">Standardized format</span>
+                          </button>
+                          <button
+                            onClick={() => downloadExport("sales-csv-canonical")}
+                            className="flex flex-col items-center justify-center rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-4 py-4 text-center hover:bg-indigo-500/20 transition"
+                          >
+                            <span className="text-lg mb-1">📋</span>
+                            <span className="text-[11px] font-medium text-indigo-200">Canonical CSV</span>
+                            <span className="text-[10px] text-indigo-300/70 mt-1">Canonical format</span>
                           </button>
                           <button
                             onClick={() => downloadExport("sales-zoho")}

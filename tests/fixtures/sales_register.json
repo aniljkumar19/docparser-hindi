@@ -1,0 +1,60 @@
+{
+  "doc_type": "sales_register",
+  "gstin_of_business": "27ABCDE1234F1Z5",
+  "period": "2025-01",
+  "entries": [
+    {
+      "invoice_number": "SAL-001",
+      "invoice_date": "2025-01-05",
+      "customer_name": "Customer A",
+      "customer_gstin": "27CUST1234567Z1D2",
+      "place_of_supply": "Maharashtra",
+      "reverse_charge": false,
+      "invoice_type": "REGULAR",
+      "taxable_value": 200000.00,
+      "cgst": 18000.00,
+      "sgst": 18000.00,
+      "igst": 0.00,
+      "cess": 0.00,
+      "total_value": 236000.00,
+      "hsn_summary": []
+    },
+    {
+      "invoice_number": "SAL-002",
+      "invoice_date": "2025-01-10",
+      "customer_name": "Customer B",
+      "customer_gstin": "24CUST9876543Z1E2",
+      "place_of_supply": "Gujarat",
+      "reverse_charge": false,
+      "invoice_type": "REGULAR",
+      "taxable_value": 150000.00,
+      "cgst": 0.00,
+      "sgst": 0.00,
+      "igst": 27000.00,
+      "cess": 0.00,
+      "total_value": 177000.00,
+      "hsn_summary": []
+    },
+    {
+      "invoice_number": "SAL-003",
+      "invoice_date": "2025-01-15",
+      "customer_name": "Customer C",
+      "customer_gstin": "27CUST5555555Z1F3",
+      "place_of_supply": "Maharashtra",
+      "reverse_charge": false,
+      "invoice_type": "REGULAR",
+      "taxable_value": 100000.00,
+      "cgst": 9000.00,
+      "sgst": 9000.00,
+      "igst": 0.00,
+      "cess": 0.00,
+      "total_value": 118000.00,
+      "hsn_summary": []
+    }
+  ],
+  "warnings": [],
+  "meta": {
+    "parser_version": "sales_register_v1"
+  }
+}
+
