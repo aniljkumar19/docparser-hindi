@@ -1,22 +1,25 @@
 import os
 import time
 from collections import defaultdict, deque
-from typing import Callable, Optional
+from typing import Optional
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 
-class ApiKeyAndRateLimitMiddleware:
+class ApiKeyAndRateLimitMiddleware(BaseHTTPMiddleware):
     """
-    Simple API-key auth + in-memory rate limiting.
-    - Checks X-API-Key header or ?api_key=
+    API-key auth + rate limiting middleware.
+    - Checks X-API-Key header or ?api_key= against DOCPARSER_API_KEY
     - Limits total requests/min per client key/IP
-    - Limits upload requests/min separately (path contains 'upload')
+    - Limits upload requests/min separately (for /parse, /bulk-parse, /upload endpoints)
+    - Uses Redis for distributed rate limiting if available, otherwise in-memory
     """
 
-    def __init__(self, app: Callable, redis_client=None):
-        self.app = app
+    def __init__(self, app, redis_client=None):
+        super().__init__(app)
         self.api_key_required = os.getenv("DOCPARSER_API_KEY")
         self.req_limit_per_min = int(os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "60"))
         self.upload_limit_per_min = int(os.getenv("RATE_LIMIT_UPLOADS_PER_MINUTE", "5"))
@@ -30,19 +33,13 @@ class ApiKeyAndRateLimitMiddleware:
             self._request_buckets: dict[str, deque[float]] = defaultdict(deque)
             self._upload_buckets: dict[str, deque[float]] = defaultdict(deque)
 
-    async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-
-        request = Request(scope, receive=receive)
-        path = scope.get("path", "")
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
 
         # Skip auth/rate limiting for public paths
         PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/redoc", "/dashboard", "/_next"]
         if any(path.startswith(public) for public in PUBLIC_PATHS):
-            await self.app(scope, receive, send)
-            return
+            return await call_next(request)
 
         # 1) API key check
         client_key = self._get_client_key(request)
@@ -53,28 +50,24 @@ class ApiKeyAndRateLimitMiddleware:
                 or request.query_params.get("api_key")
             )
             if not presented_key:
-                resp = JSONResponse(
+                return JSONResponse(
                     status_code=401,
                     content={
                         "error": "unauthorized",
                         "message": "Missing API key. Please provide 'x-api-key' header or '?api_key=' query parameter.",
                     },
                 )
-                await resp(scope, receive, send)
-                return
             if presented_key != self.api_key_required:
                 # Log for debugging (but don't expose the actual key)
                 import logging
                 logging.debug(f"API key mismatch: provided key length={len(presented_key)}, required key length={len(self.api_key_required) if self.api_key_required else 0}")
-                resp = JSONResponse(
+                return JSONResponse(
                     status_code=401,
                     content={
                         "error": "unauthorized",
                         "message": "Invalid API key.",
                     },
                 )
-                await resp(scope, receive, send)
-                return
 
         # 2) Rate limiting
         now = time.time()
@@ -82,19 +75,17 @@ class ApiKeyAndRateLimitMiddleware:
 
         # global request limit
         if not self._check_rate_limit(id_for_limit, "requests", self.req_limit_per_min, now):
-            resp = JSONResponse(
+            return JSONResponse(
                 status_code=429,
                 content={
                     "error": "rate_limited",
                     "message": "Too many requests. Please try again later.",
                 },
             )
-            await resp(scope, receive, send)
-            return
 
         # upload-specific limit (check for POST to /v1/parse or /v1/bulk-parse or any path with 'upload')
-        path_lower = scope.get("path", "").lower()
-        method = scope.get("method", "").upper()
+        path_lower = path.lower()
+        method = request.method.upper()
         is_upload = (
             method == "POST" and (
                 "/parse" in path_lower or 
@@ -104,31 +95,24 @@ class ApiKeyAndRateLimitMiddleware:
         )
         if is_upload:
             if not self._check_rate_limit(id_for_limit, "uploads", self.upload_limit_per_min, now):
-                resp = JSONResponse(
+                return JSONResponse(
                     status_code=429,
                     content={
                         "error": "rate_limited_uploads",
                         "message": "Too many uploads. Please slow down.",
                     },
                 )
-                await resp(scope, receive, send)
-                return
 
         # Set authentication info in request.state so endpoints can skip verify_api_key()
-        # This allows middleware to handle auth when enabled
-        # Note: We need to set this in scope['state'] for ASGI, but Request.state will access it
-        if 'state' not in scope:
-            scope['state'] = {}
-        scope['state']['middleware_authenticated'] = True
-        # Get the presented key (already validated above)
-        final_key = presented_key if (self.api_key_required and presented_key) else (
+        request.state.middleware_authenticated = True
+        request.state.api_key = presented_key if (self.api_key_required and presented_key) else (
             request.headers.get("x-api-key") or request.query_params.get("api_key") or None
         )
-        scope['state']['api_key'] = final_key
-        scope['state']['tenant_id'] = None  # Middleware doesn't track tenant_id, use None
+        request.state.tenant_id = None  # Middleware doesn't track tenant_id, use None
         
         # OK → pass through
-        await self.app(scope, receive, send)
+        response = await call_next(request)
+        return response
 
     def _get_client_key(self, request: Request) -> str:
         ip = request.client.host if request.client else "unknown"
