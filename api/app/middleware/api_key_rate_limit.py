@@ -56,10 +56,20 @@ class ApiKeyAndRateLimitMiddleware(BaseHTTPMiddleware):
         logging.info(f"🔐 Middleware dispatch called: {path}")
 
         # Skip auth/rate limiting for public paths
-        PUBLIC_PATHS = ["/", "/health", "/docs", "/openapi.json", "/redoc", "/dashboard", "/_next"]
-        if any(path.startswith(public) for public in PUBLIC_PATHS):
-            print(f"[RateLimitMiddleware] Public path {path}, skipping auth")
-            logging.debug(f"   → Public path, skipping auth/rate limit")
+        # Note: Check exact matches first, then prefix matches for paths like "/dashboard" and "/_next"
+        PUBLIC_PATHS_EXACT = ["/", "/health", "/docs", "/openapi.json", "/redoc"]
+        PUBLIC_PATHS_PREFIX = ["/dashboard", "/_next"]
+        
+        # Check exact matches
+        if path in PUBLIC_PATHS_EXACT:
+            print(f"[RateLimitMiddleware] Public path (exact): {path}, skipping auth")
+            logging.debug(f"   → Public path (exact), skipping auth/rate limit")
+            return await call_next(request)
+        
+        # Check prefix matches (for paths like /dashboard/... or /_next/...)
+        if any(path.startswith(prefix) for prefix in PUBLIC_PATHS_PREFIX):
+            print(f"[RateLimitMiddleware] Public path (prefix): {path}, skipping auth")
+            logging.debug(f"   → Public path (prefix), skipping auth/rate limit")
             return await call_next(request)
 
         # Debug logging
