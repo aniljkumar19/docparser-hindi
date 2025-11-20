@@ -179,6 +179,10 @@ echo ""
 echo "📋 TEST 5: Error Messages"
 echo "-----------------------------------"
 echo ""
+echo "   ⏳ Waiting 65 seconds for rate limit window to reset..."
+sleep 65
+echo "   ✅ Rate limit window reset, proceeding with error message tests"
+echo ""
 echo "5.1 Testing 404 error format..."
 response=$(curl -s -w "\n%{http_code}" \
     -H "x-api-key: $API_KEY" \
