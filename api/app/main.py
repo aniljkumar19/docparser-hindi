@@ -238,16 +238,20 @@ if USE_API_KEY_MIDDLEWARE:
     # Pass Redis client for distributed rate limiting (if available)
     # Falls back to in-memory rate limiting if Redis is not available
     api_key_value = os.getenv("DOCPARSER_API_KEY", "")
+    print("[Main] USE_API_KEY_MIDDLEWARE is true – adding ApiKeyAndRateLimitMiddleware")
     logger.info(f"🔐 API Key Middleware ENABLED (key length: {len(api_key_value) if api_key_value else 0})")
     logger.info(f"   Rate limits: {os.getenv('RATE_LIMIT_REQUESTS_PER_MINUTE', '60')} req/min, {os.getenv('RATE_LIMIT_UPLOADS_PER_MINUTE', '5')} uploads/min")
     try:
         logger.info("🔧 Registering ApiKeyAndRateLimitMiddleware...")
         app.add_middleware(ApiKeyAndRateLimitMiddleware, redis_client=redis)
         logger.info("✅ ApiKeyAndRateLimitMiddleware registered successfully")
+        print("[Main] ✅ ApiKeyAndRateLimitMiddleware registered successfully")
     except Exception as e:
         logger.error(f"❌ Failed to register ApiKeyAndRateLimitMiddleware: {e}", exc_info=True)
+        print(f"[Main] ❌ Failed to register ApiKeyAndRateLimitMiddleware: {e}")
         raise
 else:
+    print("[Main] USE_API_KEY_MIDDLEWARE is false – NOT adding ApiKeyAndRateLimitMiddleware")
     logger.info("⚠️  API Key Middleware DISABLED - using legacy verify_api_key()")
 
 # init_db() already called above with error handling

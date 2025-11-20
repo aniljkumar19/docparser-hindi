@@ -20,6 +20,7 @@ class ApiKeyAndRateLimitMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app, redis_client=None):
         import logging
+        print("[RateLimitMiddleware] __init__ called")
         logging.info("🔧 ApiKeyAndRateLimitMiddleware.__init__ called")
         try:
             super().__init__(app)
@@ -36,10 +37,13 @@ class ApiKeyAndRateLimitMiddleware(BaseHTTPMiddleware):
                 self._request_buckets: dict[str, deque[float]] = defaultdict(deque)
                 self._upload_buckets: dict[str, deque[float]] = defaultdict(deque)
             
+            api_key_status = "yes" if self.api_key_required else "no"
+            print(f"[RateLimitMiddleware] enabled=True, req_limit_per_min={self.req_limit_per_min}, upload_limit_per_min={self.upload_limit_per_min}, api_key_required={api_key_status}")
             logging.info(f"✅ ApiKeyAndRateLimitMiddleware initialized successfully")
             logging.info(f"   api_key_required: {bool(self.api_key_required)} (length: {len(self.api_key_required) if self.api_key_required else 0})")
             logging.info(f"   use_redis: {self.use_redis}")
         except Exception as e:
+            print(f"[RateLimitMiddleware] ❌ Failed to initialize: {e}")
             logging.error(f"❌ Failed to initialize ApiKeyAndRateLimitMiddleware: {e}", exc_info=True)
             raise
 

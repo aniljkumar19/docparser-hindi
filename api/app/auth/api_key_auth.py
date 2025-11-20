@@ -1,5 +1,5 @@
 """API Key authentication dependency for FastAPI routes"""
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from ..db import SessionLocal, ApiKey
 from ..security import hash_api_key, _extract_key
@@ -20,6 +20,7 @@ def get_api_key_from_headers(
     return _extract_key(authorization, x_api_key)
 
 def require_api_key(
+    request: Request,
     db: Session = Depends(get_db),
     raw_key: str | None = Depends(get_api_key_from_headers),
 ) -> ApiKey:
@@ -29,7 +30,30 @@ def require_api_key(
     
     Example:
         router = APIRouter(prefix="/v1", dependencies=[Depends(require_api_key)])
+    
+    NOTE: If USE_API_KEY_MIDDLEWARE is enabled, this will check request.state.middleware_authenticated
+    first and skip verification if middleware already authenticated the request.
     """
+    # Check if middleware already authenticated this request
+    if request and hasattr(request.state, 'middleware_authenticated') and request.state.middleware_authenticated:
+        # Middleware already verified, return a mock ApiKey object
+        api_key = getattr(request.state, 'api_key', None) or raw_key
+        tenant_id = getattr(request.state, 'tenant_id', None) or ""
+        
+        class MiddlewareAuthenticatedApiKey:
+            def __init__(self, key, tenant_id):
+                self.id = f"middleware_{key[:10] if key else 'unknown'}"
+                self.key_hash = ""
+                self.tenant_id = tenant_id
+                self.name = "Middleware Authenticated"
+                self.is_active = "active"
+                self.rate_limit_per_minute = 60
+                self.rate_limit_per_hour = 1000
+                self.last_used_at = None
+                self.created_at = None
+        
+        return MiddlewareAuthenticatedApiKey(api_key, tenant_id)
+    
     if not raw_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
