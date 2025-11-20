@@ -58,11 +58,11 @@ fi
 
 # 1.3: Check rate limiting (general requests)
 echo ""
-echo "1.3 Testing rate limiting (general requests, limit: 10/min)..."
-echo "   Sending 15 requests rapidly (no delays)..."
+echo "1.3 Testing rate limiting (general requests, limit: 60/min)..."
+echo "   Sending 70 requests rapidly (no delays)..."
 rate_limited=false
 rate_limited_at=0
-for i in {1..15}; do
+for i in {1..70}; do
     status=$(curl -s -o /dev/null -w "%{http_code}" -H "x-api-key: $API_KEY" "$API_BASE/v1/jobs?limit=1" 2>/dev/null)
     if [ "$status" = "429" ]; then
         echo "   ✅ Request $i: HTTP 429 (Rate limited!)"
@@ -85,7 +85,7 @@ fi
 
 # 1.4: Check upload-specific rate limiting
 echo ""
-echo "1.4 Testing upload-specific rate limiting (limit: 3/min)..."
+echo "1.4 Testing upload-specific rate limiting (limit: 5/min)..."
 echo "   Creating small test file (1KB) for fast uploads..."
 echo "x" > /tmp/tiny_upload.pdf
 echo "   Sending 8 upload requests rapidly (no delays)..."

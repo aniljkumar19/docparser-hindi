@@ -118,13 +118,68 @@ else
     print_test 1 "Valid .pdf check (got HTTP $http_code)"
 fi
 
-# Test 4: Error messages
+# Test 4: Rate Limiting
 echo ""
 echo ""
-echo "📋 TEST 4: Error Messages"
+echo "📋 TEST 4: Rate Limiting"
 echo "-----------------------------------"
 echo ""
-echo "4.1 Testing 404 error format..."
+echo "4.1 Testing general rate limiting (limit: 60/min)..."
+echo "   Sending 70 requests rapidly to trigger rate limit..."
+rate_limited=false
+rate_limited_at=0
+for i in $(seq 1 70); do
+    status=$(curl -s -o /dev/null -w "%{http_code}" -H "x-api-key: $API_KEY" "$API_BASE/v1/jobs?limit=1" 2>/dev/null)
+    if [ "$status" = "429" ]; then
+        echo "   ✅ Request $i: HTTP 429 (Rate limited!)"
+        rate_limited=true
+        rate_limited_at=$i
+        break
+    elif [ "$i" -le 5 ]; then
+        echo "   Request $i: HTTP $status"
+    fi
+done
+if [ "$rate_limited" = true ]; then
+    print_test 0 "General rate limiting works (got 429 at request $rate_limited_at)"
+else
+    print_test 1 "General rate limiting not triggered (may need more requests or check limits)"
+fi
+
+echo ""
+echo "4.2 Testing upload-specific rate limiting (limit: 5/min)..."
+echo "   Creating small test file (1KB) for fast uploads..."
+echo "x" > /tmp/tiny_upload.pdf
+echo "   Sending 8 upload requests rapidly..."
+upload_rate_limited=false
+upload_rate_limited_at=0
+for i in $(seq 1 8); do
+    status=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+        -H "x-api-key: $API_KEY" \
+        -F "file=@/tmp/tiny_upload.pdf" \
+        "$API_BASE/v1/parse" 2>/dev/null)
+    if [ "$status" = "429" ]; then
+        echo "   ✅ Upload $i: HTTP 429 (Upload rate limited!)"
+        upload_rate_limited=true
+        upload_rate_limited_at=$i
+        break
+    elif [ "$i" -le 3 ]; then
+        echo "   Upload $i: HTTP $status"
+    fi
+done
+rm -f /tmp/tiny_upload.pdf
+if [ "$upload_rate_limited" = true ]; then
+    print_test 0 "Upload rate limiting works (got 429 at upload $upload_rate_limited_at)"
+else
+    print_test 1 "Upload rate limiting not triggered (may need more requests or check limits)"
+fi
+
+# Test 5: Error messages
+echo ""
+echo ""
+echo "📋 TEST 5: Error Messages"
+echo "-----------------------------------"
+echo ""
+echo "5.1 Testing 404 error format..."
 response=$(curl -s -w "\n%{http_code}" \
     -H "x-api-key: $API_KEY" \
     "$API_BASE/v1/jobs/nonexistent-job-id-12345" 2>/dev/null)
@@ -140,7 +195,7 @@ else
 fi
 
 echo ""
-echo "4.2 Testing validation error format..."
+echo "5.2 Testing validation error format..."
 response=$(curl -s -w "\n%{http_code}" -X POST \
     -H "Content-Type: application/json" \
     -H "x-api-key: $API_KEY" \
