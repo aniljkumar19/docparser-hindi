@@ -95,7 +95,13 @@ def verify_api_key(authorization: str | None, x_api_key: str | None, request=Non
         key = key.strip()
         logging.info(f"   Trimmed key: {key[:12]}...{key[-4:]} (length: {len(key)})")
     
-    # First, try database lookup (new method)
+    # 1) Master key from env (DOCPARSER_API_KEY) - used by dashboard + test script
+    master_key = os.getenv("DOCPARSER_API_KEY")
+    if master_key and key == master_key:
+        logging.info(f"✅ Master API key verified (DOCPARSER_API_KEY)")
+        return (key, "master")
+    
+    # 2) Database lookup (new method)
     key_hash = hash_api_key(key)
     logging.info(f"Key hash (first 16 chars): {key_hash[:16]}...")
     
