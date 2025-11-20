@@ -46,33 +46,8 @@ class ApiKeyAndRateLimitMiddleware:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
 
-        # Clone request body (important for multipart/form-data uploads)
-        # We need to read the body to check it, but also preserve it for FastAPI
-        body_chunks = []
-        more_body = True
-        receive_ = receive
-
-        async def inner_receive():
-            nonlocal body_chunks, more_body, receive_
-            message = await receive_()
-            if message["type"] == "http.request":
-                body_chunks.append(message.get("body", b""))
-                more_body = message.get("more_body", False)
-            return message
-        
-        # Actually read the body by creating a temporary Request (this will trigger inner_receive)
-        # But we'll recreate it properly for FastAPI
-        try:
-            # Create Request to trigger body reading, but we'll recreate the stream
-            temp_request = Request(scope, receive=inner_receive)
-            # Force body read by accessing it (but we'll use body_chunks instead)
-            await temp_request.body()  # This triggers inner_receive to read all chunks
-        except Exception:
-            # If body reading fails, continue anyway (might be GET request)
-            pass
-        
-        # Combine all body chunks
-        body = b"".join(body_chunks)
+        # Don't consume the body - we only need headers for auth/rate limiting
+        # FastAPI will read the body when it needs to
 
         path = scope["path"]
         path_lower = path.lower()
@@ -177,21 +152,9 @@ class ApiKeyAndRateLimitMiddleware:
                 )
                 return await response(scope, receive, send)
 
-        # Recreate receive stream for downstream FastAPI (preserve body)
-        body_sent = False
-        async def new_receive():
-            nonlocal body, body_sent
-            if not body_sent and body:
-                body_sent = True
-                return {"type": "http.request", "body": body, "more_body": False}
-            return {"type": "http.request", "body": b"", "more_body": False}
-
-        # Set authentication info in request.state (need to pass through scope)
-        # Note: We can't modify scope directly, but FastAPI will handle request.state
-        # We'll set it in a way that downstream can access
-        
-        # Pass to downstream FastAPI
-        return await self.app(scope, new_receive, send)
+        # Pass to downstream FastAPI with original receive (body intact)
+        # FastAPI will read the body when it needs to (for file uploads, etc.)
+        return await self.app(scope, receive, send)
 
     def _check_rate_limit(
         self,
