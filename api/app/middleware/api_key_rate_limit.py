@@ -41,6 +41,10 @@ class ApiKeyAndRateLimitMiddleware(BaseHTTPMiddleware):
         if any(path.startswith(public) for public in PUBLIC_PATHS):
             return await call_next(request)
 
+        # Debug logging
+        import logging
+        logging.info(f"🔐 Middleware intercepting: {path} (api_key_required={bool(self.api_key_required)})")
+
         # 1) API key check
         client_key = self._get_client_key(request)
         presented_key = None
@@ -60,7 +64,11 @@ class ApiKeyAndRateLimitMiddleware(BaseHTTPMiddleware):
             if presented_key != self.api_key_required:
                 # Log for debugging (but don't expose the actual key)
                 import logging
-                logging.debug(f"API key mismatch: provided key length={len(presented_key)}, required key length={len(self.api_key_required) if self.api_key_required else 0}")
+                logging.warning(f"🔐 Middleware: API key mismatch!")
+                logging.warning(f"   Provided key length: {len(presented_key) if presented_key else 0}")
+                logging.warning(f"   Required key length: {len(self.api_key_required) if self.api_key_required else 0}")
+                logging.warning(f"   Provided starts with: {presented_key[:10] if presented_key and len(presented_key) >= 10 else 'N/A'}")
+                logging.warning(f"   Required starts with: {self.api_key_required[:10] if self.api_key_required and len(self.api_key_required) >= 10 else 'N/A'}")
                 return JSONResponse(
                     status_code=401,
                     content={
