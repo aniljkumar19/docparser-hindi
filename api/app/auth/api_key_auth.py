@@ -60,7 +60,26 @@ def require_api_key(
             detail="API key required. Use Authorization: Bearer <key> or X-API-Key: <key>",
         )
     
-    # First try database lookup (hashed keys)
+    # 1) Master key from env (DOCPARSER_API_KEY) - used by dashboard + test script
+    import os
+    master_key = os.getenv("DOCPARSER_API_KEY")
+    if master_key and raw_key == master_key:
+        # Return a mock ApiKey object for master key
+        class MasterApiKey:
+            def __init__(self, key):
+                self.id = f"master_{key[:10] if key else 'unknown'}"
+                self.key_hash = ""
+                self.tenant_id = "master"
+                self.name = "Master API Key"
+                self.is_active = "active"
+                self.rate_limit_per_minute = 60
+                self.rate_limit_per_hour = 1000
+                self.last_used_at = None
+                self.created_at = None
+        
+        return MasterApiKey(raw_key)
+    
+    # 2) Database lookup (hashed keys)
     key_hash = hash_api_key(raw_key)
     api_key = (
         db.query(ApiKey)

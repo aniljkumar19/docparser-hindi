@@ -86,7 +86,7 @@ echo "test" > /tmp/test.exe
 response=$(curl -s -w "\n%{http_code}" -X POST \
     -H "x-api-key: $API_KEY" \
     -F "file=@/tmp/test.exe" \
-    "$API_BASE/v1/parse" 2>/dev/null)
+    "$API_BASE/v1/jobs" 2>/dev/null)
 http_code=$(echo "$response" | tail -n1)
 body=$(echo "$response" | head -n-1)
 error=$(echo "$body" | python3 -c "import sys, json; d=json.load(sys.stdin); print(d.get('error', ''))" 2>/dev/null || echo "")
@@ -104,7 +104,7 @@ echo "test content" > /tmp/test.pdf
 response=$(curl -s -w "\n%{http_code}" -X POST \
     -H "x-api-key: $API_KEY" \
     -F "file=@/tmp/test.pdf" \
-    "$API_BASE/v1/parse" 2>/dev/null)
+    "$API_BASE/v1/jobs" 2>/dev/null)
 http_code=$(echo "$response" | tail -n1)
 rm -f /tmp/test.pdf
 
@@ -156,7 +156,7 @@ for i in $(seq 1 8); do
     status=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
         -H "x-api-key: $API_KEY" \
         -F "file=@/tmp/tiny_upload.pdf" \
-        "$API_BASE/v1/parse" 2>/dev/null)
+        "$API_BASE/v1/jobs" 2>/dev/null)
     if [ "$status" = "429" ]; then
         echo "   ✅ Upload $i: HTTP 429 (Upload rate limited!)"
         upload_rate_limited=true
