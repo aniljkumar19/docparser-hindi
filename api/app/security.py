@@ -58,12 +58,30 @@ def _extract_key(authorization: str | None, x_api_key: str | None) -> str:
         detail="Missing API key. Please provide either 'x-api-key' header or 'Authorization: Bearer <token>' header"
     )
 
-def verify_api_key(authorization: str | None, x_api_key: str | None) -> tuple[str, str]:
+def verify_api_key(authorization: str | None, x_api_key: str | None, request=None) -> tuple[str, str]:
     """
     Verify API key - supports both database-backed keys and legacy env var keys.
     This is the backward-compatible function used by existing endpoints.
     For new code, use the middleware which provides request.state.tenant_id.
+    
+    If request is provided and middleware_authenticated is True, skip verification
+    (middleware already handled auth).
     """
+    # Check if middleware already authenticated this request
+    if request:
+        try:
+            middleware_auth = getattr(request.state, 'middleware_authenticated', False)
+            if middleware_auth:
+                # Middleware already verified the API key, just return it
+                api_key = getattr(request.state, 'api_key', None) or _extract_key(authorization, x_api_key)
+                tenant_id = getattr(request.state, 'tenant_id', None) or ""
+                import logging
+                logging.debug(f"✅ Middleware already authenticated, skipping verify_api_key()")
+                return (api_key, tenant_id)
+        except AttributeError:
+            # request.state might not exist yet, continue with normal verification
+            pass
+    
     import logging
     key = _extract_key(authorization, x_api_key)
     

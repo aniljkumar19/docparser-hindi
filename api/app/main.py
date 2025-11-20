@@ -1,28 +1,46 @@
 import os, time, json
-from fastapi import FastAPI, UploadFile, File, Header, HTTPException, status, Form, Query
+from fastapi import FastAPI, UploadFile, File, Header, HTTPException, status, Form, Query, Request
+from fastapi.exceptions import RequestValidationError
 from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-# Load .env file, but don't override environment variables from docker-compose
-load_dotenv(dotenv_path="/app/.env", override=False)
+from pathlib import Path
+# Load .env file from multiple possible locations
+# Try project root first (for local development), then /app/.env (for Docker)
+env_paths = [
+    Path(__file__).parent.parent.parent / ".env",  # Project root
+    Path("/app/.env"),  # Docker path
+]
+for env_path in env_paths:
+    if env_path.exists():
+        load_dotenv(dotenv_path=str(env_path), override=False)
+        break
 
 from fastapi import Header, File, UploadFile, HTTPException, status
 from .security import verify_api_key, reload_api_keys, API_KEY_TENANTS
 reload_api_keys()
 
+# Set up structured logging
+from .logging_config import setup_structured_logging
+USE_JSON_LOGGING = os.getenv("USE_JSON_LOGGING", "false").lower() == "true"
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+setup_structured_logging(use_json=USE_JSON_LOGGING, log_level=LOG_LEVEL)
+
 # Log API keys status on startup
 import logging
-logging.info("=== API Keys Status ===")
-logging.info(f"Loaded {len(API_KEY_TENANTS)} API keys: {list(API_KEY_TENANTS.keys())}")
-logging.info(f"dev_123 available: {'dev_123' in API_KEY_TENANTS}")
-api_keys_env = os.getenv("API_KEYS", "")
-logging.info(f"API_KEYS env var: '{api_keys_env}' (empty={not api_keys_env})")
-logging.info("======================")
+logger = logging.getLogger(__name__)
+logger.info("=== API Keys Status ===", extra={
+    "api_keys_count": len(API_KEY_TENANTS),
+    "api_keys": list(API_KEY_TENANTS.keys())[:5],  # First 5 for privacy
+    "dev_123_available": 'dev_123' in API_KEY_TENANTS,
+    "api_keys_env_set": bool(os.getenv("API_KEYS", "")),
+})
+logger.info("======================")
 
 # Import new API key system (optional - controlled by env var)
 USE_API_KEY_MIDDLEWARE = os.getenv("USE_API_KEY_MIDDLEWARE", "false").lower() == "true"
 if USE_API_KEY_MIDDLEWARE:
-    from .middleware.auth import ApiKeyAuthMiddleware
+    from .middleware.api_key_rate_limit import ApiKeyAndRateLimitMiddleware
 
 from rq import Queue
 from redis import Redis
@@ -93,6 +111,77 @@ MAX_FILE_MB = int(os.getenv("MAX_FILE_MB","15"))
 
 app = FastAPI(title="Doc Parser API PRO", version="0.2.0")
 
+# Global exception handlers for better error messages
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle request validation errors (422)."""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "request_validation_error",
+            "message": "Invalid request payload. Please check your input and try again.",
+            "details": exc.errors(),
+        },
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions - ensure structured detail format."""
+    # If detail is already a dict, pass it through. Otherwise wrap.
+    detail = exc.detail
+    if not isinstance(detail, dict):
+        detail = {
+            "error": "http_error",
+            "message": str(detail),
+        }
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=detail,
+    )
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Handle unhandled exceptions - log full error, return user-friendly message."""
+    # Log full error for debugging with structured logging
+    import logging
+    import traceback
+    logger = logging.getLogger(__name__)
+    
+    # Extract request context
+    request_id = getattr(request.state, "request_id", None)
+    tenant_id = getattr(request.state, "tenant_id", None)
+    
+    # Log with structured format
+    logger.error(
+        "Unhandled exception occurred",
+        extra={
+            "request_id": request_id,
+            "tenant_id": tenant_id,
+            "path": request.url.path,
+            "method": request.method,
+            "exception_type": type(exc).__name__,
+            "exception_message": str(exc),
+            "traceback": traceback.format_exc(),
+        },
+        exc_info=True
+    )
+    
+    # Also print to console for immediate visibility
+    traceback.print_exc()
+    
+    # User-friendly generic message
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "internal_server_error",
+            "message": (
+                "Something went wrong while processing your request. "
+                "If this keeps happening, please contact support."
+            ),
+        },
+    )
+
 # Include API key management router
 app.include_router(api_keys_router)
 
@@ -113,11 +202,9 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "x-api-key", "X-API-Key"],
 )
 
-# Add API key authentication middleware (if enabled)
-# When enabled, this handles auth + rate limiting automatically
-# When disabled, endpoints use the legacy verify_api_key() function
-if USE_API_KEY_MIDDLEWARE:
-    app.add_middleware(ApiKeyAuthMiddleware)
+# Add request context middleware for structured logging
+from .middleware.request_context import RequestContextMiddleware
+app.add_middleware(RequestContextMiddleware)
 
 # Redis connection - make it optional
 # Only connect if REDIS_URL is explicitly set AND not pointing to localhost (which won't work in Railway)
@@ -143,6 +230,20 @@ if redis_url:
 else:
     print("ℹ️  REDIS_URL not set. Jobs will process synchronously (no background queue).")
 
+# Add API key authentication middleware (if enabled)
+# When enabled, this handles auth + rate limiting automatically
+# When disabled, endpoints use the legacy verify_api_key() function
+# NOTE: Must be added AFTER Redis connection is established
+if USE_API_KEY_MIDDLEWARE:
+    # Pass Redis client for distributed rate limiting (if available)
+    # Falls back to in-memory rate limiting if Redis is not available
+    api_key_value = os.getenv("DOCPARSER_API_KEY", "")
+    logger.info(f"🔐 API Key Middleware ENABLED (key length: {len(api_key_value) if api_key_value else 0})")
+    logger.info(f"   Rate limits: {os.getenv('RATE_LIMIT_REQUESTS_PER_MINUTE', '60')} req/min, {os.getenv('RATE_LIMIT_UPLOADS_PER_MINUTE', '5')} uploads/min")
+    app.add_middleware(ApiKeyAndRateLimitMiddleware, redis_client=redis)
+else:
+    logger.info("⚠️  API Key Middleware DISABLED - using legacy verify_api_key()")
+
 # init_db() already called above with error handling
 
 WEBHOOKS = {}
@@ -160,6 +261,56 @@ def _to_jsonable(x):
             return json.loads(bytes(x).decode("utf-8"))
         except Exception:
             return None
+
+# File type validation
+ALLOWED_EXTENSIONS = {"pdf", "json", "csv", "jpg", "jpeg", "png", "txt", "tiff"}
+ALLOWED_MIME_PREFIXES = {
+    "application/pdf",
+    "text/csv",
+    "application/json",
+    "image/jpeg",
+    "image/png",
+    "image/tiff",
+    "text/plain",
+}
+
+def _get_extension(filename: str) -> str:
+    """Extract file extension from filename."""
+    if not filename or "." not in filename:
+        return ""
+    return filename.rsplit(".", 1)[1].lower()
+
+def validate_upload_file(file: UploadFile) -> None:
+    """
+    Validate uploaded file type by extension and MIME type.
+    Raises HTTPException if file type is not allowed.
+    """
+    ext = _get_extension(file.filename or "")
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_file_type",
+                "message": (
+                    "Unsupported file type. Allowed: PDF, JSON, CSV, JPG, PNG, TIFF, TXT."
+                ),
+            },
+        )
+
+    # content-type check (best-effort)
+    content_type = (file.content_type or "").lower()
+    if content_type and not any(content_type.startswith(p) for p in ALLOWED_MIME_PREFIXES):
+        # For safety, still reject unknown types
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_mime_type",
+                "message": (
+                    f"Unsupported content type '{content_type}'. "
+                    "Allowed: PDF, JSON, CSV, JPEG, PNG, TIFF, TXT."
+                ),
+            },
+        )
 
 @app.get("/", response_class=HTMLResponse)
 def root():
@@ -985,19 +1136,33 @@ def test_api_key(authorization: str | None = Header(None), x_api_key: str | None
 # app/main.py
 @app.post("/v1/parse", response_model=JobResponse)
 async def parse_endpoint(
+    request: Request,
     file: UploadFile = File(...),
     authorization: str | None = Header(None, alias="Authorization"),
     x_api_key: str | None = Header(None, alias="x-api-key"),
     doc_type: str | None = Form(None),
 ):
     try:
-        api_key, tenant_id = verify_api_key(authorization, x_api_key)
+        api_key, tenant_id = verify_api_key(authorization, x_api_key, request=request)
 
+        # 1) File type validation
+        validate_upload_file(file)
+
+        # 2) File size validation
         contents = await file.read()
         mb = len(contents) / (1024 * 1024)
         if mb > MAX_FILE_MB:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                detail=f"File too large ({mb:.2f} MB). Max {MAX_FILE_MB} MB")
+            raise HTTPException(
+                status_code=413,
+                detail={
+                    "error": "file_too_large",
+                    "message": f"File too large ({mb:.2f} MB). Max allowed size is {MAX_FILE_MB} MB.",
+                },
+            )
+        
+        # Reset file pointer for later parsing (if needed)
+        from io import BytesIO
+        file.file = BytesIO(contents)
 
         object_key = get_object_key(file.filename)
         save_file_to_s3(object_key, contents)
@@ -1030,17 +1195,70 @@ async def parse_endpoint(
         raise
     except Exception as e:
         import traceback
-        error_msg = f"Internal error: {str(e)}\n{traceback.format_exc()}"
-        print(f"ERROR in /v1/parse: {error_msg}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        import logging
+        logger = logging.getLogger(__name__)
+        request_id = getattr(request.state, "request_id", None) if 'request' in locals() else None
+        request_id = getattr(request.state, "request_id", None)
+        logger.error(
+            "Error in /v1/parse endpoint",
+            extra={
+                "request_id": request_id,
+                "tenant_id": tenant_id if 'tenant_id' in locals() else None,
+                "filename": file.filename if 'file' in locals() else None,
+                "exception_type": type(e).__name__,
+                "exception_message": str(e),
+                "traceback": traceback.format_exc(),
+            },
+            exc_info=True
+        )
+        
+        # Provide more specific error messages based on error type
+        error_str = str(e).lower()
+        if "file" in error_str and ("size" in error_str or "large" in error_str):
+            raise HTTPException(
+                status_code=413,
+                detail={
+                    "error": "file_too_large",
+                    "message": f"File size exceeds maximum allowed ({MAX_FILE_MB} MB). Please compress or split the file.",
+                },
+            )
+        elif "parsing" in error_str or "parse" in error_str or "extract" in error_str:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "parsing_failed",
+                    "message": (
+                        "Unable to parse document. Please ensure the document is clear and contains readable text. "
+                        "Try: 1) Better quality scan, 2) OCR if needed, 3) Check document format."
+                    ),
+                },
+            )
+        elif "unsupported" in error_str or "not supported" in error_str:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "unsupported_document_type",
+                    "message": "Document type not recognized. Supported: invoices, GSTR-1/2B/3B, sales/purchase registers, bank statements.",
+                },
+            )
+        else:
+            # Generic error - will be caught by global handler
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "processing_error",
+                    "message": f"An error occurred processing your document: {str(e)}",
+                },
+            )
 
 @app.get("/v1/jobs")
 async def list_jobs(
+    request: Request,
     limit: int = 10,
     authorization: str | None = Header(None),
     x_api_key: str | None = Header(None, alias="x-api-key")):
     """Get list of recent jobs for the authenticated tenant"""
-    _, tenant_id = verify_api_key(authorization, x_api_key)
+    _, tenant_id = verify_api_key(authorization, x_api_key, request=request)
 
     with SessionLocal() as dbs:
         # For development: always include jobs with empty tenant_id
@@ -1076,6 +1294,7 @@ async def list_jobs(
 
 @app.get("/v1/jobs/{job_id}")
 async def get_job(job_id: str,
+                  request: Request,
                   authorization: str | None = Header(None),
                   x_api_key: str | None = Header(None, alias="x-api-key"),
                   format: str = "legacy"):
@@ -1086,7 +1305,7 @@ async def get_job(job_id: str,
     - format: "legacy" (default) or "canonical" - Return result in legacy or canonical JSON format
     """
     # reuse your API key check (supports Authorization and X-API-Key)
-    _, _tenant_id = verify_api_key(authorization, x_api_key)
+    _, _tenant_id = verify_api_key(authorization, x_api_key, request=request)
 
     with SessionLocal() as dbs:
         try:
@@ -1094,13 +1313,25 @@ async def get_job(job_id: str,
         except Exception as e:
             import logging
             logging.error(f"Error fetching job {job_id}: {e}")
-            raise HTTPException(status_code=404, detail=f"Job not found: {str(e)}")
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "job_not_found",
+                    "message": f"Job {job_id} not found: {str(e)}",
+                },
+            )
         
         if not job:
             # Log for debugging
             import logging
             logging.warning(f"Job {job_id} not found in database (tenant_id={_tenant_id})")
-            raise HTTPException(status_code=404, detail="Job not found")
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "job_not_found",
+                    "message": f"Job {job_id} not found. It may have been deleted or the ID is incorrect.",
+                },
+            )
 
         result = _to_jsonable(getattr(job, "result", None))
         meta   = _to_jsonable(getattr(job, "meta", None)) or {}
@@ -1154,6 +1385,7 @@ async def get_job(job_id: str,
 
 @app.post("/v1/bulk-parse")
 async def bulk_parse_endpoint(
+    request: Request,
     files: List[UploadFile] = File(...),
     client_id: Optional[str] = Form(None),
     batch_name: Optional[str] = Form(None),
@@ -1162,7 +1394,7 @@ async def bulk_parse_endpoint(
     doc_type: Optional[str] = Form(None),
 ):
     """Upload and parse multiple documents in a single batch"""
-    api_key, tenant_id = verify_api_key(authorization, x_api_key)
+    api_key, tenant_id = verify_api_key(authorization, x_api_key, request=request)
     
     if len(files) > 100:  # Limit bulk uploads
         raise HTTPException(
@@ -1189,12 +1421,25 @@ async def bulk_parse_endpoint(
         job_ids = []
         for file in files:
             try:
+                # 1) File type validation
+                try:
+                    validate_upload_file(file)
+                except HTTPException as e:
+                    # Log error but continue with other files
+                    update_batch_stats(db, batch.id, failed_files=1)
+                    continue
+                
+                # 2) File size validation
                 contents = await file.read()
                 mb = len(contents) / (1024 * 1024)
                 
                 if mb > MAX_FILE_MB:
                     update_batch_stats(db, batch.id, failed_files=1)
                     continue
+                
+                # Reset file pointer for later parsing (if needed)
+                from io import BytesIO
+                file.file = BytesIO(contents)
                 
                 # Save file to S3
                 object_key = get_object_key(file.filename)
@@ -1305,13 +1550,42 @@ def export_tally_csv(job_id: str, authorization: str = Header(None), x_api_key: 
     try:
         verify_api_key(authorization, x_api_key)
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "authentication_failed",
+                "message": f"Authentication failed: {str(e)}. Please check your API key and try again.",
+            },
+        )
     
     try:
         with SessionLocal() as dbs:
             job = get_job_by_id(dbs, job_id)
             if not job or job.status != "succeeded" or not job.result:
-                raise HTTPException(status_code=404, detail="job not found or not succeeded")
+                if not job:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={
+                            "error": "job_not_found",
+                            "message": f"Job {job_id} not found.",
+                        },
+                    )
+                elif job.status != "succeeded":
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": "job_not_completed",
+                            "message": f"Job {job_id} is not completed yet. Current status: {job.status}",
+                        },
+                    )
+                else:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={
+                            "error": "job_no_result",
+                            "message": f"Job {job_id} has no result data available.",
+                        },
+                    )
             
             result = job.result
             if isinstance(result, str):
@@ -1319,10 +1593,22 @@ def export_tally_csv(job_id: str, authorization: str = Header(None), x_api_key: 
                 try:
                     result = json.loads(result)
                 except json.JSONDecodeError:
-                    raise HTTPException(status_code=500, detail="Invalid JSON in job result")
+                    raise HTTPException(
+                        status_code=500,
+                        detail={
+                            "error": "invalid_json",
+                            "message": "Job result contains invalid JSON. The job may have failed during processing.",
+                        },
+                    )
             
             if not isinstance(result, dict):
-                raise HTTPException(status_code=500, detail=f"Expected dict result, got {type(result).__name__}")
+                raise HTTPException(
+                    status_code=500,
+                    detail={
+                        "error": "invalid_result_format",
+                        "message": f"Expected dict result, got {type(result).__name__}. The job result may be corrupted.",
+                    },
+                )
             
             # Check if this is a register (has entries array)
             if "entries" in result:
@@ -1416,13 +1702,42 @@ def export_tally_xml(job_id: str, authorization: str = Header(None), x_api_key: 
     try:
         verify_api_key(authorization, x_api_key)
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "authentication_failed",
+                "message": f"Authentication failed: {str(e)}. Please check your API key and try again.",
+            },
+        )
     
     try:
         with SessionLocal() as dbs:
             job = get_job_by_id(dbs, job_id)
             if not job or job.status != "succeeded" or not job.result:
-                raise HTTPException(status_code=404, detail="job not found or not succeeded")
+                if not job:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={
+                            "error": "job_not_found",
+                            "message": f"Job {job_id} not found.",
+                        },
+                    )
+                elif job.status != "succeeded":
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": "job_not_completed",
+                            "message": f"Job {job_id} is not completed yet. Current status: {job.status}",
+                        },
+                    )
+                else:
+                    raise HTTPException(
+                        status_code=404,
+                        detail={
+                            "error": "job_no_result",
+                            "message": f"Job {job_id} has no result data available.",
+                        },
+                    )
             
             result = job.result
             if isinstance(result, str):
@@ -1430,10 +1745,22 @@ def export_tally_xml(job_id: str, authorization: str = Header(None), x_api_key: 
                 try:
                     result = json.loads(result)
                 except json.JSONDecodeError:
-                    raise HTTPException(status_code=500, detail="Invalid JSON in job result")
+                    raise HTTPException(
+                        status_code=500,
+                        detail={
+                            "error": "invalid_json",
+                            "message": "Job result contains invalid JSON. The job may have failed during processing.",
+                        },
+                    )
             
             if not isinstance(result, dict):
-                raise HTTPException(status_code=500, detail=f"Expected dict result, got {type(result).__name__}")
+                raise HTTPException(
+                    status_code=500,
+                    detail={
+                        "error": "invalid_result_format",
+                        "message": f"Expected dict result, got {type(result).__name__}. The job result may be corrupted.",
+                    },
+                )
             
             # Check if this is a register (has entries array)
             if "entries" in result:
@@ -1599,7 +1926,13 @@ def export_parsed_json(
     try:
         verify_api_key(authorization, x_api_key)
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "authentication_failed",
+                "message": f"Authentication failed: {str(e)}. Please check your API key and try again.",
+            },
+        )
     
     with SessionLocal() as dbs:
         job = get_job_by_id(dbs, job_id)
