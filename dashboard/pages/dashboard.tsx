@@ -18,6 +18,7 @@ type Job = {
     reconciliations?: {
       purchase_vs_gstr3b_itc?: PurchaseVsGstr3bRecon;
       sales_vs_gstr1?: SalesVsGstr1Recon;
+      itc_2b_3b?: any; // ITC reconciliation between GSTR-2B and GSTR-3B
     };
     [k: string]: any;
   } | null;
