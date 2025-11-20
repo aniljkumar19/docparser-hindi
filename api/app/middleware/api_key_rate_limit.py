@@ -74,15 +74,23 @@ class ApiKeyAndRateLimitMiddleware:
         if any(path.startswith(prefix) for prefix in PUBLIC_PATHS_PREFIX):
             return await self.app(scope, receive, send)
 
-        # Build Request object to access headers/query params
-        request = Request(scope, receive=inner_receive)
+        # Read headers directly from scope (don't consume body yet)
+        headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
         
-        # Extract client key (IP + API key)
-        presented_key = (
-            request.headers.get("x-api-key")
-            or request.query_params.get("api_key")
-        )
-        client_ip = request.client.host if request.client else "unknown"
+        # Extract API key from headers or query string
+        presented_key = headers.get("x-api-key") or headers.get("x-api-key".lower())
+        
+        # Also check query string (need to parse it from scope)
+        query_string = scope.get("query_string", b"").decode()
+        if not presented_key and query_string:
+            from urllib.parse import parse_qs
+            query_params = parse_qs(query_string)
+            if "api_key" in query_params:
+                presented_key = query_params["api_key"][0]
+        
+        # Get client IP from scope
+        client_info = scope.get("client")
+        client_ip = client_info[0] if client_info else "unknown"
         bucket_key = f"{client_ip}:{presented_key or 'anonymous'}"
 
         # Debug logging
@@ -116,7 +124,7 @@ class ApiKeyAndRateLimitMiddleware:
                 return await response(scope, receive, send)
 
         # Determine if it's an upload (check content-type and path)
-        content_type = (request.headers.get("content-type") or "").lower()
+        content_type = headers.get("content-type", "").lower()
         method = scope.get("method", "").upper()
         is_upload = (
             method == "POST" and (
