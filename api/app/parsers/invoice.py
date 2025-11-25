@@ -17,30 +17,36 @@ if not callable(_detect_doc_type):
 
 
 from .rules import parse_text_rules
+from .rules_hindi import parse_text_rules_hindi
+from .common import extract_text_safely_hindi
 
-def parse_bytes_to_result(filename: str, data: bytes):
+def parse_bytes_to_result(filename: str, data: bytes, use_hindi: bool = False):
     t0 = time.time()
 
     text = ""
     ocr_used = False
 
-    # 1) Try pdfminer text first
-    try:
-        text = extract_text(io.BytesIO(data)) or ""
-    except Exception:
-        text = ""
-
-    # 2) If text is very short/empty, try OCR once
-    if len(text.strip()) < 60:
-        t2 = ""
+    # Use Hindi-aware text extraction if requested
+    if use_hindi:
+        text, ocr_used = extract_text_safely_hindi(data, filename)
+    else:
+        # 1) Try pdfminer text first
         try:
-            img = Image.open(io.BytesIO(data))
-            t2 = pytesseract.image_to_string(img) or ""
+            text = extract_text(io.BytesIO(data)) or ""
         except Exception:
+            text = ""
+
+        # 2) If text is very short/empty, try OCR once
+        if len(text.strip()) < 60:
             t2 = ""
-        if len(t2.strip()) > len(text.strip()):
-            text = t2
-            ocr_used = True
+            try:
+                img = Image.open(io.BytesIO(data))
+                t2 = pytesseract.image_to_string(img) or ""
+            except Exception:
+                t2 = ""
+            if len(t2.strip()) > len(text.strip()):
+                text = t2
+                ocr_used = True
 
     # 3) Doc-type detection (single call). Bail early if not an invoice.
     doc_type = _detect_doc_type(text)
@@ -66,8 +72,11 @@ def parse_bytes_to_result(filename: str, data: bytes):
         }
         return result, meta
 
-    # 4) Normal invoice parsing
-    result = parse_text_rules(text)
+    # 4) Normal invoice parsing (use Hindi rules if requested)
+    if use_hindi:
+        result = parse_text_rules_hindi(text)
+    else:
+        result = parse_text_rules(text)
     dt = int((time.time() - t0) * 1000)
     meta = {
         "pages": 1,

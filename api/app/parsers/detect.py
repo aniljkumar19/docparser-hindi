@@ -3,16 +3,30 @@ import re
 
 KEYS = {
     # REMOVE subtotal/total from invoice signals
-    "invoice": [r"\binvoice\b", r"\btax invoice\b", r"\bgstin\b", r"\bbill to\b", r"\binvoice (no|#)\b"],
+    "invoice": [
+        r"\binvoice\b", r"\btax invoice\b", r"\bgstin\b", r"\bbill to\b", r"\binvoice (no|#)\b",
+        # Hindi patterns: चालान, बिल, कर चालान, टैक्स इनवॉइस
+        r"चालान", r"बिल", r"कर\s*चालान", r"टैक्स\s*इनवॉइस", r"जीएसटी\s*चालान"
+    ],
     "birth_certificate": [r"\bbirth certificate\b", r"\bdate of birth\b", r"\bplace of birth\b"],
     # Indian document types
-    "eway_bill": [r"\beway bill\b", r"\bway bill\b", r"\btransport document\b", r"\bvehicle no\b", r"\btransporter\b"],
-    "gstr": [r"\bgstr\b", r"\bgst return\b", r"\bgst filing\b", r"\bturnover\b", r"\btaxable value\b"],
+    "eway_bill": [
+        r"\beway bill\b", r"\bway bill\b", r"\btransport document\b", r"\bvehicle no\b", r"\btransporter\b",
+        # Hindi: ई-वे बिल, वे बिल
+        r"ई[-\s]*वे\s*बिल", r"वे\s*बिल"
+    ],
+    "gstr": [
+        r"\bgstr\b", r"\bgst return\b", r"\bgst filing\b", r"\bturnover\b", r"\btaxable value\b",
+        # Hindi: जीएसटी रिटर्न, जीएसटी दाखिल
+        r"जीएसटी\s*रिटर्न", r"जीएसटी\s*दाखिल"
+    ],
     "purchase_register": [
         r"\bpurchase register\b",
         r"\bsupplier gstin\b",
         r"\bpurchase invoice\b",
         r"\bpurchase value\b",
+        # Hindi: खरीद रजिस्टर, आपूर्तिकर्ता
+        r"खरीद\s*रजिस्टर", r"आपूर्तिकर्ता"
     ],
 }
 RECEIPT_HINTS = ("thank you", "cashier", "pos", "tender", "change", "subtotal", "receipt", "store #", "terminal")

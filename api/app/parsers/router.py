@@ -2,10 +2,14 @@
 import time
 from typing import Any, Dict
 
-from .common import extract_text_safely, normalize_text
+from .common import extract_text_safely, extract_text_safely_hindi, normalize_text
 #from .detect import detect_doc_type
 from .detect import detect_doc_type_with_scores
 from .invoice import parse_text_rules as parse_invoice
+try:
+    from .rules_hindi import parse_text_rules_hindi as parse_invoice_hindi
+except Exception:
+    parse_invoice_hindi = None
 try:
     from .receipt import parse_text_rules as parse_receipt
 except Exception:
@@ -116,7 +120,7 @@ def _resolve_forced_doc_type(value: str | None) -> tuple[str | None, str | None]
     return label, route
 
 
-def parse_any(filename: str, data: bytes, forced_doc_type: str | None = None):
+def parse_any(filename: str, data: bytes, forced_doc_type: str | None = None, use_hindi: bool = False):
     t0 = time.time()
     
     # Handle JSON files (especially for GSTR-2B sample)
@@ -142,7 +146,11 @@ def parse_any(filename: str, data: bytes, forced_doc_type: str | None = None):
         except (json.JSONDecodeError, UnicodeDecodeError):
             pass  # Fall through to normal text extraction
     
-    raw_text, ocr_used = extract_text_safely(data, filename)
+    # Use Hindi-aware text extraction if requested
+    if use_hindi:
+        raw_text, ocr_used = extract_text_safely_hindi(data, filename)
+    else:
+        raw_text, ocr_used = extract_text_safely(data, filename)
     cleaned_text = normalize_text(raw_text)
     text_len = len(cleaned_text)
     page1_text = (raw_text or "").split("\f", 1)[0]
@@ -189,17 +197,37 @@ def parse_any(filename: str, data: bytes, forced_doc_type: str | None = None):
     meta_extra: Dict[str, Any] = {}
 
     if doc_type == "invoice":
-        result = parse_invoice(cleaned_text)
+        # Use Hindi parsing rules if requested and available
+        if use_hindi and parse_invoice_hindi:
+            result = parse_invoice_hindi(cleaned_text)
+        else:
+            result = parse_invoice(cleaned_text)
         if apply_invoice_fallbacks:
             result = apply_invoice_fallbacks(result, raw_text or cleaned_text)
     elif doc_type == "gst_invoice" and parse_gst_invoice:
-        result = parse_gst_invoice(cleaned_text)
+        # Use Hindi parsing rules if requested and available
+        if use_hindi and parse_invoice_hindi:
+            result = parse_invoice_hindi(cleaned_text)
+        else:
+            result = parse_gst_invoice(cleaned_text)
         if apply_invoice_fallbacks:
             result = apply_invoice_fallbacks(result, raw_text or cleaned_text)
-    elif doc_type == "receipt" and parse_receipt:
-        result = parse_receipt(cleaned_text)
-    elif doc_type == "utility_bill" and parse_ubill:
-        result = parse_ubill(cleaned_text)
+    elif doc_type == "receipt":
+        # Use Hindi parsing rules if requested and available
+        if use_hindi and parse_receipt_hindi:
+            result = parse_receipt_hindi(cleaned_text)
+        elif parse_receipt:
+            result = parse_receipt(cleaned_text)
+        else:
+            result = _unknown_result()
+    elif doc_type == "utility_bill":
+        # Use Hindi parsing rules if requested and available
+        if use_hindi and parse_ubill_hindi:
+            result = parse_ubill_hindi(cleaned_text)
+        elif parse_ubill:
+            result = parse_ubill(cleaned_text)
+        else:
+            result = _unknown_result()
     elif doc_type == "bank_statement" and parse_bank:
         result = parse_bank(cleaned_text, confidence=conf)
         if normalize_bank_statement and isinstance(result, dict):
@@ -267,8 +295,14 @@ def parse_any(filename: str, data: bytes, forced_doc_type: str | None = None):
             )
         else:
             normalized = None
-    elif doc_type == "eway_bill" and parse_eway:
-        result = parse_eway(cleaned_text)
+    elif doc_type == "eway_bill":
+        # Use Hindi parsing rules if requested and available
+        if use_hindi and parse_eway_hindi:
+            result = parse_eway_hindi(cleaned_text)
+        elif parse_eway:
+            result = parse_eway(cleaned_text)
+        else:
+            result = _unknown_result()
     elif doc_type == "gstr" and parse_gstr:
         result = parse_gstr(cleaned_text)
         if isinstance(result, dict) and gstr_quality_score:

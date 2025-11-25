@@ -110,10 +110,101 @@ def extract_text_safely(data: bytes, filename: str | None = None) -> Tuple[str, 
     return "", False
 
 
-def ocr_page(img) -> str:
+def ocr_page(img, lang: str = "eng") -> str:
+    """
+    Perform OCR on an image.
+    
+    Args:
+        img: PIL Image object
+        lang: Language code(s) for OCR. Use "hin+eng" for Hindi+English mixed documents.
+              Options: "eng", "hin", "hin+eng" (default: "eng")
+    
+    Returns:
+        Extracted text string
+    """
     if not pytesseract:
         return ""
-    return pytesseract.image_to_string(img, lang="eng", config="--psm 6") or ""
+    
+    # Try the requested language, fallback to English if it fails
+    try:
+        return pytesseract.image_to_string(img, lang=lang, config="--psm 6") or ""
+    except Exception:
+        # If Hindi language pack not installed, fallback to English
+        if lang != "eng":
+            try:
+                return pytesseract.image_to_string(img, lang="eng", config="--psm 6") or ""
+            except Exception:
+                return ""
+        return ""
+
+
+def extract_text_safely_hindi(data: bytes, filename: str | None = None) -> Tuple[str, bool]:
+    """
+    Extract text with Hindi OCR support. Tries Hindi+English OCR if English-only fails.
+    Returns (text, ocr_used).
+    """
+    # First try English extraction
+    text, ocr_used = extract_text_safely(data, filename)
+    
+    # If we got text, return it
+    if text.strip():
+        return text, ocr_used
+    
+    # If no text and we haven't tried OCR yet, try Hindi+English OCR
+    if not ocr_used and Image and pytesseract:
+        is_pdf = data[:4] == b"%PDF"
+        
+        if is_pdf:
+            # Try Hindi OCR on PDF
+            if pdfplumber is not None:
+                try:
+                    buffer = io.BytesIO(data)
+                    with pdfplumber.open(buffer) as pdf:
+                        texts: list[str] = []
+                        for page in pdf.pages:
+                            try:
+                                page_image = page.to_image(resolution=200)
+                                pil_img = getattr(page_image, "original", None) or getattr(page_image, "image", None)
+                                if pil_img is None and hasattr(page_image, "pil_image"):
+                                    pil_img = page_image.pil_image
+                                if pil_img is None:
+                                    continue
+                                t = ocr_page(pil_img, lang="hin+eng")
+                                if t.strip():
+                                    texts.append(t)
+                            except Exception:
+                                continue
+                        full = "\n".join(texts).strip()
+                        if full:
+                            return full, True
+                except Exception:
+                    pass
+            
+            # Fallback to pdf2image with Hindi OCR
+            if convert_from_bytes and Image and pytesseract:
+                try:
+                    images = convert_from_bytes(data, dpi=200)
+                    texts = []
+                    for img in images:
+                        t = ocr_page(img, lang="hin+eng")
+                        if t.strip():
+                            texts.append(t)
+                    full = "\n".join(texts).strip()
+                    if full:
+                        return full, True
+                except Exception:
+                    pass
+        else:
+            # Try Hindi OCR on images
+            try:
+                img = Image.open(io.BytesIO(data))
+                t = ocr_page(img, lang="hin+eng")
+                if t.strip():
+                    return t, True
+            except Exception:
+                pass
+    
+    return text, ocr_used
 
 
 _NUMERIC_TOKEN = re.compile(r"\b[0-9OIl]{2,}(?:[./][0-9OIl]{2,})?\b")

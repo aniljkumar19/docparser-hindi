@@ -1152,6 +1152,7 @@ async def parse_endpoint(
     authorization: str | None = Header(None, alias="Authorization"),
     x_api_key: str | None = Header(None, alias="x-api-key"),
     doc_type: str | None = Form(None),
+    use_hindi: str | None = Form(None),  # Accept "true", "1", "yes" to enable Hindi parsing
 ):
     try:
         api_key, tenant_id = verify_api_key(authorization, x_api_key, request=request)
@@ -1179,9 +1180,13 @@ async def parse_endpoint(
         save_file_to_s3(object_key, contents)
 
         requested_doc_type = (doc_type or "").strip().lower() or None
+        use_hindi_flag = (use_hindi or "").strip().lower() in ("true", "1", "yes", "on")
+        
         job_meta = {}
         if requested_doc_type:
             job_meta["requested_doc_type"] = requested_doc_type
+        if use_hindi_flag:
+            job_meta["use_hindi"] = True
 
         with SessionLocal() as dbs:
             job = create_job(dbs, object_key=object_key, filename=file.filename,

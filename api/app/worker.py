@@ -309,8 +309,9 @@ def parse_job_task(job_id: str):
                     job_meta = {}
 
             requested_doc_type = (job_meta or {}).get("requested_doc_type")
+            use_hindi = (job_meta or {}).get("use_hindi", False)
 
-            parse_result = parse_any(fn, data, forced_doc_type=requested_doc_type)
+            parse_result = parse_any(fn, data, forced_doc_type=requested_doc_type, use_hindi=use_hindi)
             # parse_any returns (result, meta, doc_type) for JSON files, (result, meta) for others
             # Handle both cases for backward compatibility
             try:
